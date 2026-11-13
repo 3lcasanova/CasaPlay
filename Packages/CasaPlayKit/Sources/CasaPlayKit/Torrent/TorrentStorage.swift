@@ -32,8 +32,22 @@ public struct StorageBudget: Sendable {
         self.freeSpace = freeSpace
     }
 
+    /// The most free space that is kept untouched on this platform.
+    ///
+    /// Apple TV reports only raw free space, and tvOS deliberately keeps that small: it fills
+    /// storage with other apps' purgeable caches and clears them when an app needs room. A
+    /// 2 GB reserve measured against that figure refused every piece on a healthy Apple TV,
+    /// so the torrent paused itself before the first byte was stored.
+    public static var platformReserveCap: Int64 {
+        #if os(tvOS)
+        return 128 * 1024 * 1024
+        #else
+        return .max
+        #endif
+    }
+
     public static func volume(of url: URL, limit: Int64, reserve: Int64) -> StorageBudget {
-        StorageBudget(limit: limit, reserve: reserve) {
+        StorageBudget(limit: limit, reserve: min(reserve, platformReserveCap)) {
             #if os(Linux)
             let attrs = try? FileManager.default.attributesOfFileSystem(forPath: url.path)
             return (attrs?[.systemFreeSize] as? NSNumber)?.int64Value

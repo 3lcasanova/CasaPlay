@@ -495,11 +495,13 @@ final class TorrentSessionTests: XCTestCase {
             _ = try await session.read(fileIndex: 1, offset: 300_000, length: 100, timeout: 5)
             XCTFail("expected the limit to stop the download")
         } catch {
-            XCTAssertTrue([.paused, .timedOut].contains(error as? TorrentError))
+            // The reader is told the real cause, not just "paused".
+            XCTAssertEqual(error as? TorrentError, .storageLimitReached(limitBytes: 10_000))
         }
         let stats = await session.stats()
         XCTAssertEqual(stats.state, .paused)
         XCTAssertTrue(stats.lastError?.contains("limit") == true)
+        XCTAssertFalse(stats.isBuffering, "a failed read must not leave the status saying Buffering")
 
         // Nearly full device: 1 MB free, 2 GB reserve.
         let low = TorrentEngine(root: tempRoot(), transport: server, peerFactory: nil, freeSpace: { _ in 1_000_000 })
@@ -508,6 +510,49 @@ final class TorrentSessionTests: XCTestCase {
         _ = try? await s2.read(fileIndex: 1, offset: 0, length: 10, timeout: 5)
         let lowStats = await s2.stats()
         XCTAssertTrue(lowStats.lastError?.contains("Not enough free space") == true)
+    }
+
+    /// What happened on Apple TV: the storage check paused the torrent, and it then stayed
+    /// paused, so every later attempt to play failed at once.
+    func testPlayingAgainResumesATorrentPausedByLowSpace() async throws {
+        final class Space: @unchecked Sendable {
+            private let lock = NSLock()
+            private var bytes: Int64 = 1_000_000
+            var value: Int64 { lock.withLock { bytes } }
+            func set(_ v: Int64) { lock.withLock { bytes = v } }
+        }
+        let space = Space()
+        let t = movieTorrent()
+        let engine = TorrentEngine(root: tempRoot(), transport: RangeServer(files: t.webSeedFiles),
+                                   peerFactory: nil, freeSpace: { _ in space.value })
+        let session = try await engine.add(torrentFile: t.torrentFile)
+        try await session.selectFile(1)
+        do {
+            _ = try await session.read(fileIndex: 1, offset: 0, length: 10, timeout: 5)
+            XCTFail("expected the low-space check to stop the read")
+        } catch {
+            guard case .storageFull = error as? TorrentError else { return XCTFail("got \(error)") }
+        }
+        let pausedState = await session.stats().state
+        XCTAssertEqual(pausedState, .paused)
+
+        // Space is available again and the user presses play.
+        space.set(50_000_000_000)
+        await session.resumeIfPaused()
+        try await session.selectFile(1)
+        let data = try await session.read(fileIndex: 1, offset: 0, length: 10, timeout: 10)
+        XCTAssertEqual(data.count, 10)
+        let resumed = await session.stats()
+        XCTAssertNotEqual(resumed.state, .paused)
+        XCTAssertNil(resumed.lastError)
+    }
+
+    func testReserveIsCappedPerPlatform() {
+        let budget = StorageBudget.volume(of: tempRoot(), limit: 1_000, reserve: 2 * 1024 * 1024 * 1024)
+        XCTAssertEqual(budget.reserve, min(2 * 1024 * 1024 * 1024, StorageBudget.platformReserveCap))
+        #if os(tvOS)
+        XCTAssertLessThanOrEqual(budget.reserve, 128 * 1024 * 1024, "Apple TV reports raw free space only")
+        #endif
     }
 
     func testCleanupRemovesLeastRecentlyUsed() async throws {

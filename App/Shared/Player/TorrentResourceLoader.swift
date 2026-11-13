@@ -22,6 +22,10 @@ final class TorrentResourceLoader: NSObject, AVAssetResourceLoaderDelegate, @unc
     let queue = DispatchQueue(label: "casaplay.torrent.loader")
     private let lock = NSLock()
     private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
+    private var failure: String?
+    /// The engine's own reason for the last failed read ("Not enough free space…", "Paused",
+    /// "timed out"). AVPlayer replaces it with a generic message, so the player asks here.
+    var lastFailureMessage: String? { lock.withLock { failure } }
     /// AVPlayer asks for chunks this size at most.
     private let chunkSize = 512 * 1024
 
@@ -116,6 +120,7 @@ final class TorrentResourceLoader: NSObject, AVAssetResourceLoaderDelegate, @unc
         } catch {
             guard !Task.isCancelled else { return }
             let message = (error as? LocalizedError)?.errorDescription ?? "The torrent stopped sending data."
+            lock.withLock { failure = message }
             let nsError = NSError(domain: "CasaPlay.Torrent", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
             queue.async { request.finishLoading(with: nsError) }
         }

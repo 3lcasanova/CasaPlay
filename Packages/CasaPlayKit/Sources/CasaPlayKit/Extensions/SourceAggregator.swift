@@ -44,7 +44,25 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     public enum Location: Equatable, Sendable {
         case http(URL, headers: [String: String])
         case torrent(InfoHash, fileIndex: Int?, trackers: [URL])
+        /// An HTTPS link to a .torrent file. Its info hash is only known once the file has
+        /// been downloaded, which happens when the user picks it.
+        case torrentFile(URL)
+        /// A link to the title on another service's website or app. Never played in CasaPlay;
+        /// listed under "Where to watch".
+        case external(URL)
         case unsupported(String)
+    }
+
+    /// Text shown when an external link is treated as a stream.
+    public static let externalReason = "This opens in another app or website."
+
+    /// For a "Where to watch" entry: the service ("Amazon Prime Video") and the offer
+    /// ("Subscription, Rent, Buy"), taken from the two lines of the add-on's label.
+    public var externalService: (name: String, detail: String?)? {
+        guard case .external = location else { return nil }
+        let lines = label.split(separator: "\n", omittingEmptySubsequences: true).map { $0.trimmingCharacters(in: .whitespaces) }
+        let name = lines.first.flatMap { $0.isEmpty ? nil : $0 } ?? providerName
+        return (name, lines.count > 1 ? lines[1] : nil)
     }
     public var id: String
     public var providerID: String
@@ -52,6 +70,7 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     public var providerRole: ProviderRole
     public var providerPriority: Int
     public var location: Location
+    public var originalMagnet: String?
     public var label: String
     public var filename: String?
     public var advertised: AdvertisedQuality
@@ -91,6 +110,10 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
             return "http:" + (c?.string ?? url.absoluteString).lowercased()
         case .torrent(let hash, let index, _):
             return "bt:\(hash.hex):\(index ?? -1)"
+        case .torrentFile(let url):
+            return "btfile:" + url.absoluteString.lowercased()
+        case .external(let url):
+            return "ext:" + url.absoluteString.lowercased()
         case .unsupported:
             return "x:" + id
         }
@@ -172,7 +195,11 @@ public struct StremioStreamProvider: StreamProvider {
             return .torrent(hash, fileIndex: s.fileIdx, trackers: trackers)
         }
         if s.ytId != nil { return .unsupported("YouTube links can't be played in CasaPlay.") }
-        if s.externalUrl != nil { return .unsupported("This opens an external website or app.") }
+        if let text = s.externalUrl {
+            // Only ordinary web links are kept; anything else could be an arbitrary app scheme.
+            if let url = URL(string: text), url.scheme?.lowercased() == "https", url.host != nil { return .external(url) }
+            return .unsupported("This opens an external website or app.")
+        }
         return .unsupported("No playable link.")
     }
 
@@ -290,6 +317,22 @@ public struct SourceResults: Equatable, Sendable {
     public var rejected: [(candidate: StreamCandidate, reason: String)] = []
     public var primaryFinished = false
     public var finished = false
+
+    /// Other services the title is available on, from add-ons such as WatchHub. One entry per
+    /// service and offer, in the order the add-ons returned them.
+    public var whereToWatch: [StreamCandidate] {
+        var seen = Set<String>()
+        return hidden
+            .filter { $0.externalService != nil }
+            .sorted { $0.id.compare($1.id, options: .numeric) == .orderedAscending }
+            .filter { c in
+                guard let s = c.externalService else { return false }
+                return seen.insert((s.name + "|" + (s.detail ?? "")).lowercased()).inserted
+            }
+    }
+
+    /// Hidden streams that are real streams, not "Where to watch" links.
+    public var hiddenStreamCount: Int { hidden.filter { $0.externalService == nil }.count }
     /// Probes still running.
     public var checking = 0
 
@@ -302,7 +345,9 @@ public struct SourceResults: Equatable, Sendable {
     /// The stream to start automatically, or nil while a claimed-4K stream is still being checked
     /// (so a 1080p link is never picked just because it answered first).
     public var bestChoice: StreamCandidate? {
-        let pending4K = (ranked + hidden).contains { c in
+        // Only modes that can offer 4K wait for a claimed-4K stream to be checked.
+        let offers4K = mode.onlyResolution == nil || mode == .uhdOnly
+        let pending4K = offers4K && (ranked + hidden).contains { c in
             c.advertised.resolution == .uhd2160 && (c.verification == .notChecked || c.verification == .checking)
         }
         guard let first = ranked.first else { return nil }
@@ -314,7 +359,14 @@ public struct SourceResults: Equatable, Sendable {
     /// The explicit "4K only found nothing" message, once everything has finished.
     public var emptyMessage: String? {
         guard finished, ranked.isEmpty else { return nil }
-        let total = hidden.count
+        let total = hiddenStreamCount
+        // Results came back but every one was for something else: say so, or the
+        // provider's result count next to "nothing found" looks like a fault.
+        if total == 0, !rejected.isEmpty {
+            let n = rejected.count
+            let what = request.kind == .movie ? "film" : "episode"
+            return "\(n) result\(n == 1 ? " was" : "s were") found, but \(n == 1 ? "it is" : "they are all") for a different title, year or episode, not this \(what). None of your sources has it."
+        }
         switch mode {
         case .uhdOnly:
             return total == 0
@@ -324,6 +376,11 @@ public struct SourceResults: Equatable, Sendable {
             return total == 0 ? "No playable 4K or 1080p stream was found." : "No 4K or 1080p stream was found. \(total) lower-resolution stream\(total == 1 ? " is" : "s are") hidden."
         case .preferUHD:
             return "No playable stream was found."
+        case .fhdOnly, .hd720Only, .sdOnly:
+            let name = mode.onlyResolution?.label ?? "matching"
+            return total == 0
+                ? "No playable \(name) stream was found."
+                : "No \(name) stream was found. \(total) stream\(total == 1 ? "" : "s") at other resolutions \(total == 1 ? "is" : "are") hidden."
         }
     }
 }
@@ -375,7 +432,11 @@ public actor SourceAggregator {
 
         func add(_ found: [StreamCandidate], from index: Int) {
             for var c in found {
-                if case .reject(let reason) = ContentMatcher.check(c, against: request) {
+                // A "where to watch" link is named after the service, not the film, so the
+                // title check does not apply to it.
+                if case .external = c.location {
+                    c.verification = .unplayable(StreamCandidate.externalReason)
+                } else if case .reject(let reason) = ContentMatcher.check(c, against: request) {
                     results.rejected.append((c, reason))
                     results.outcomes[index].rejected += 1
                     continue
@@ -477,7 +538,8 @@ public struct PlaylistProbe: StreamProbe {
     public func probe(_ candidate: StreamCandidate) async -> VerificationState {
         switch candidate.location {
         case .unsupported(let why): return .unplayable(why)
-        case .torrent: return .unreadable("Checked once playback starts (the data comes from peers).")
+        case .external: return .unplayable(StreamCandidate.externalReason)
+        case .torrent, .torrentFile: return .unreadable("Checked once playback starts (the data comes from peers).")
         case .http(let url, let headers):
             let ext = url.pathExtension.lowercased()
             if ["mkv", "avi", "webm", "wmv", "flv"].contains(ext) {

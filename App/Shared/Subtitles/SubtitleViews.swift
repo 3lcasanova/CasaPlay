@@ -153,8 +153,8 @@ struct SubtitleSearchView: View {
                 }
                 .padding(Metrics.screenPadding)
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Find subtitles")
+            .screenBackground()
+            .scrollingScreenTitle("Find subtitles")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }

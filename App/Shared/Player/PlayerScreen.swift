@@ -234,6 +234,7 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             coordinator.tick(time)
         }
         coordinator.attach(player: player, tokens: [progressToken, subtitleToken])
+        coordinator.watchForFailure(of: playerItem, in: controller, isTorrent: url.scheme == TorrentResourceLoader.scheme)
 
         player.play()
         return controller
@@ -295,6 +296,40 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             self.tokens = tokens
         }
 
+        private var statusObservation: NSKeyValueObservation?
+        private var failureObserver: NSObjectProtocol?
+        private var didReportFailure = false
+
+        /// Says why playback stopped. Without this a stream that can't be opened, or a torrent
+        /// that stops sending data, just left a black screen.
+        func watchForFailure(of item: AVPlayerItem, in controller: AVPlayerViewController, isTorrent: Bool) {
+            let report: (Error?) -> Void = { [weak self, weak controller] error in
+                DispatchQueue.main.async {
+                    guard let self, let controller, !self.didReportFailure else { return }
+                    self.didReportFailure = true
+                    // For a torrent the engine knows the real reason; AVPlayer only reports
+                    // "The operation could not be completed".
+                    let engineReason = self.torrentLoader?.lastFailureMessage
+                    let reason = engineReason ?? (error as NSError?)?.localizedDescription ?? "The stream could not be opened."
+                    let hint = engineReason != nil ? ""
+                        : isTorrent
+                        ? "\n\nThe torrent may have no reachable peers or sources right now, or the file may be in a format Apple's player can't read."
+                        : "\n\nThe link may have expired, or the file may be in a format Apple's player can't read."
+                    let alert = UIAlertController(title: "Can't play this", message: reason + hint, preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    controller.present(alert, animated: true)
+                }
+            }
+            statusObservation = item.observe(\.status, options: [.new]) { item, _ in
+                if item.status == .failed { report(item.error) }
+            }
+            failureObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemFailedToPlayToEndTime, object: item, queue: .main
+            ) { note in
+                report(note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)
+            }
+        }
+
         func report(_ time: CMTime) {
             let seconds = time.seconds
             guard seconds.isFinite, seconds > 0 else { return }
@@ -316,6 +351,10 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             player.pause()
             torrentLoader?.cancelAll()
             torrentLoader = nil
+            statusObservation?.invalidate()
+            statusObservation = nil
+            if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
+            failureObserver = nil
             self.player = nil
             self.tokens = []
         }

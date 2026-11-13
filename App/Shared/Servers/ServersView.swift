@@ -18,8 +18,8 @@ struct ServersView: View {
                     serverList
                 }
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Servers")
+            .screenBackground()
+            .scrollingScreenTitle("Servers")
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -51,7 +51,6 @@ struct ServersView: View {
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius))
                 }
                 .buttonStyle(.plain)
-                .focusableOnTV()
                 #endif
 
                 ForEach(center.servers) { server in
@@ -91,7 +90,6 @@ struct ServersView: View {
                     .background(Theme.accent, in: Capsule())
             }
             .buttonStyle(.plain)
-            .focusableOnTV()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(Metrics.screenPadding)
@@ -151,7 +149,6 @@ private struct ServerRow: View {
                     .foregroundStyle(.red.opacity(0.7))
             }
             .buttonStyle(.plain)
-            .focusableOnTV()
         }
         .padding(Metrics.s(14))
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
@@ -266,7 +263,7 @@ private struct AddServerSheet: View {
                 }
                 #endif
             }
-            .navigationTitle("Add Server")
+            .scrollingScreenTitle("Add Server")
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

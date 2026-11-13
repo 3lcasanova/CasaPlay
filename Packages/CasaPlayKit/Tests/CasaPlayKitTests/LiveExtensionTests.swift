@@ -55,7 +55,9 @@ final class LiveExtensionTests: XCTestCase {
         let state = await AVFoundationProbe(timeout: 60).probe(c)
         let q = try XCTUnwrap(state.verified, "\(state)")
         print("LIVE AVFoundation: \(q.width)×\(q.height) \(q.codec ?? "?") \(q.bitrate ?? 0) b/s audio \(q.audioFormats)")
-        XCTAssertEqual(q.resolution, .hd720, "the '1080p' label is overruled by the file's real size")
+        // Despite "720p" in its name, the Archive's file is 640×360, so the measured class is SD.
+        XCTAssertEqual(q.resolution, .sd, "the '1080p' label is overruled by the file's real size")
+        XCTAssertEqual(q.width, 640)
         XCTAssertEqual(q.source, .containerMetadata)
     }
     #endif

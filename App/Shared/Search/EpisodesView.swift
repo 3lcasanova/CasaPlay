@@ -33,8 +33,8 @@ struct EpisodesView: View {
                     episodeList
                 }
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle(show.title)
+            .screenBackground()
+            .scrollingScreenTitle(show.title)
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -200,7 +200,6 @@ private struct EpisodeRow: View {
             .padding(.vertical, Metrics.s(12))
         }
         .buttonStyle(.plain)
-        .focusableOnTV()
     }
 
     @ViewBuilder

@@ -46,7 +46,45 @@ extension Font {
     }
 }
 
+/// Title for a pushed screen whose content scrolls. Apple TV draws a navigation title as a
+/// fixed overlay that scrolling content passes underneath, so there the title is put at the
+/// top of the scrolling content instead. Use with `scrollingScreenTitle(_:)`.
+struct ScreenTitle: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        #if os(tvOS)
+        Text(title)
+            .font(.casa(26, weight: .bold))
+            .foregroundStyle(Theme.textPrimary)
+            .frame(maxWidth: .infinity, alignment: .center)
+        #else
+        EmptyView()
+        #endif
+    }
+}
+
 extension View {
+    /// Full-screen app background for a screen. On Apple TV a scroll view with short content can
+    /// be laid out only as wide as that content, which left the system wallpaper showing in bands
+    /// at the sides; filling the screen first keeps the background edge to edge.
+    func screenBackground() -> some View {
+        self
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Theme.background.ignoresSafeArea())
+    }
+
+    /// Navigation title on iPhone and iPad; nothing on Apple TV, where `ScreenTitle` shows it.
+    @ViewBuilder
+    func scrollingScreenTitle(_ title: String) -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self.navigationTitle(title)
+        #endif
+    }
+
     /// Apple TV only scrolls to things it can focus, so read-only blocks opt in.
     @ViewBuilder
     func focusableOnTV() -> some View {

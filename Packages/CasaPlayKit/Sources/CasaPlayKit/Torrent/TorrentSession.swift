@@ -33,6 +33,9 @@ public actor TorrentSession: PeerHost {
     private var picker: PiecePicker?
     private var selectedFile: Int?
     private var paused = false
+    /// Why the engine paused the torrent by itself (storage full, cache limit). Nil when the
+    /// user paused it. Readers are given this instead of a bare "paused".
+    private var pauseReason: TorrentError?
     private var stopped = false
     private var addedAt = Date()
     private var lastUsedAt = Date()
@@ -96,6 +99,7 @@ public actor TorrentSession: PeerHost {
     public func start() async {
         guard !stopped else { return }
         paused = false
+        pauseReason = nil
         lastError = nil
         if currentMetainfo == nil {
             startPeerDiscovery()
@@ -108,10 +112,26 @@ public actor TorrentSession: PeerHost {
         saveResume()
     }
 
+    /// Starts again if the torrent was paused, by the user or by an error such as low storage.
+    /// Called when the user explicitly plays a file; a running torrent is left alone.
+    public func resumeIfPaused() async {
+        if paused { await start() }
+    }
+
     public func pause() {
         paused = true
+        pauseReason = nil
         stopNetwork()
         failWaiters(TorrentError.paused)
+        saveResume()
+    }
+
+    /// Pauses because of an error, and tells anyone waiting for data what the error was.
+    private func pause(because reason: TorrentError) {
+        paused = true
+        pauseReason = reason
+        stopNetwork()
+        failWaiters(reason)
         saveResume()
     }
 
@@ -294,8 +314,11 @@ public actor TorrentSession: PeerHost {
             picker?.markUrgent(urgent)
         }
         guard let first = info.pieces(covering: startOffset..<(startOffset + 1))?.lowerBound else { return Data() }
+        // Cleared on every exit, including errors: a failed read used to leave the player
+        // saying "Buffering" for ever, hiding the real reason in `lastError`.
+        defer { isWaitingForData = false }
         while store?.have[first] != true {
-            if paused { throw TorrentError.paused }
+            if paused { throw pauseReason ?? TorrentError.paused }
             if stopped { throw TorrentError.cancelled }
             isWaitingForData = true
             if workers.isEmpty && peers.isEmpty && !paused {
@@ -377,7 +400,7 @@ public actor TorrentSession: PeerHost {
         } catch {
             picker?.release(index)
             fail(error)
-            if error is TorrentError { pause() }
+            if let reason = error as? TorrentError { pause(because: reason) }
             return false
         }
         picker?.done(index)

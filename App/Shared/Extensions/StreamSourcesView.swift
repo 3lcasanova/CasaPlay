@@ -18,6 +18,9 @@ struct StreamSourcesView: View {
     @State private var aggregatorTask: Task<Void, Never>?
     @State private var showQualityPicker = false
     @State private var isAddingTorrent = false
+    @State private var addTorrentError: String?
+    /// The torrent whose file list is open, pushed inside this screen's own navigation.
+    @State private var openedTorrent: InfoHash?
 
     var body: some View {
         NavigationStack {
@@ -58,14 +61,18 @@ struct StreamSourcesView: View {
                 Divider().background(Theme.surfaceStrong)
 
                 // Stream list
-                if results.ranked.isEmpty && results.finished {
+                // With "Where to watch" entries the scrolling list is used, so a long list of services fits.
+                if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty {
                     emptyView
                 } else {
                     streamList
                 }
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Choose Stream")
+            .screenBackground()
+            .scrollingScreenTitle("Choose Stream")
+            .navigationDestination(item: $openedTorrent) { hash in
+                TorrentDetailView(hash: hash, libraryItemID: libraryItemID)
+            }
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -76,18 +83,19 @@ struct StreamSourcesView: View {
             #endif
         }
         .confirmationDialog("Stream Quality", isPresented: $showQualityPicker) {
-            ForEach([QualityMode.preferUHD, .uhdOnly, .allowFHDFallback], id: \.shortLabel) { mode in
+            ForEach(QualityMode.menuOrder, id: \.shortLabel) { mode in
                 Button(mode.shortLabel) { center.setQualityMode(mode) }
             }
             Button("Cancel", role: .cancel) {}
         }
+        .alert("Couldn't add torrent", isPresented: .constant(addTorrentError != nil), actions: {
+            Button("OK") { addTorrentError = nil }
+        }, message: { Text(addTorrentError ?? "") })
         .task { await runAggregator() }
         .onDisappear { aggregatorTask?.cancel() }
-        .sheet(item: Binding(
-            get: { app.pendingTorrentHash.map(IdentifiableInfoHash.init) },
-            set: { app.pendingTorrentHash = $0?.hash }
-        )) { wrapper in
-            TorrentDetailView(hash: wrapper.hash, libraryItemID: libraryItemID)
+        // The player is presented from the app's root, which can't happen while this sheet is up.
+        .onChange(of: app.playing?.id) { _, playingID in
+            if playingID != nil { dismiss() }
         }
         .overlay {
             if isAddingTorrent {
@@ -108,6 +116,15 @@ struct StreamSourcesView: View {
     private var streamList: some View {
         ScrollView {
             LazyVStack(spacing: Metrics.s(10)) {
+                if results.ranked.isEmpty, let message = results.emptyMessage {
+                    Text(message)
+                        .font(.casa(14))
+                        .foregroundStyle(Theme.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Metrics.s(16))
+                        .focusableOnTV()
+                }
                 ForEach(results.ranked) { candidate in
                     StreamCandidateRow(candidate: candidate, isBest: results.bestChoice?.id == candidate.id) {
                         play(candidate)
@@ -123,18 +140,45 @@ struct StreamSourcesView: View {
                     .frame(maxWidth: .infinity)
                     .padding(Metrics.s(20))
                 }
-                if !results.hidden.isEmpty {
-                    Text("\(results.hidden.count) streams hidden by quality filter")
+                if results.hiddenStreamCount > 0 {
+                    Text("\(results.hiddenStreamCount) streams hidden by quality filter")
                         .font(.casa(12))
                         .foregroundStyle(Theme.textSecondary)
                         .padding(.top, Metrics.s(4))
                         .focusableOnTV()
                 }
+                whereToWatchSection
                 if !results.rejected.isEmpty {
                     rejectedSection
                 }
             }
             .padding(Metrics.screenPadding)
+        }
+    }
+
+    // MARK: - Where to watch
+
+    /// Services the title is on, from add-ons like WatchHub. iPhone and iPad open the link;
+    /// Apple TV has no browser, so there the list is information only.
+    @ViewBuilder
+    private var whereToWatchSection: some View {
+        let services = results.whereToWatch
+        if !services.isEmpty {
+            VStack(alignment: .leading, spacing: Metrics.s(8)) {
+                Text("Where to watch")
+                    .font(.casa(13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                Text(Platform.isTV
+                     ? "Available on these services. Open the service's own app to watch."
+                     : "Available on these services. Tap one to open it.")
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+                ForEach(services) { candidate in
+                    WhereToWatchRow(candidate: candidate)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, Metrics.s(10))
         }
     }
 
@@ -233,6 +277,23 @@ struct StreamSourcesView: View {
         return providers
     }
 
+    /// Adds a torrent, then opens its file list. Nothing is fetched from peers until the
+    /// user picks a file there.
+    private func addTorrent(_ add: @escaping () async -> InfoHash?) {
+        guard !isAddingTorrent else { return }
+        isAddingTorrent = true
+        addTorrentError = nil
+        Task {
+            let hash = await add()
+            isAddingTorrent = false
+            if let hash {
+                openedTorrent = hash
+            } else {
+                addTorrentError = torrents.message ?? "The torrent couldn't be added."
+            }
+        }
+    }
+
     // MARK: - Playback
 
     private func play(_ candidate: StreamCandidate) {
@@ -260,37 +321,19 @@ struct StreamSourcesView: View {
             app.play(item)
             dismiss()
 
-        case .torrent(let hash, _, _):
-            // Torrent already has an InfoHash — navigate straight to the file picker.
-            app.pendingTorrentHash = hash
-            dismiss()
+        case .torrent(let hash, _, let trackers):
+            let magnet = candidate.originalMagnet ?? MagnetLink(infoHash: hash, trackers: trackers).uri
+            addTorrent { await torrents.add(magnet: magnet) }
 
-        case .unsupported(let reason) where reason.hasPrefix("Torrent file"):
-            // .torrent URL candidate — look up by ID and add via TorrentCenter.
-            if let tc = findTorrentCandidate(id: candidate.id) {
-                isAddingTorrent = true
-                Task {
-                    if let hash = await torrents.add(tc) {
-                        await MainActor.run {
-                            app.pendingTorrentHash = hash
-                            dismiss()
-                        }
-                    }
-                    await MainActor.run { isAddingTorrent = false }
-                }
-            }
+        case .torrentFile(let url):
+            // Download the .torrent file, add it, then go to its file picker. Nothing is
+            // downloaded from peers until a file is chosen there.
+            addTorrent { await torrents.add(torrentURL: url) }
 
-        default:
+        case .external, .unsupported:
+            // Never offered as playable streams.
             break
         }
-    }
-
-    /// Look up the original TorrentCandidate by StreamCandidate ID.
-    private func findTorrentCandidate(id: String) -> TorrentCandidate? {
-        // The ID is "torrent:{tc.id}"; reverse-map isn't stored, so we
-        // keep a secondary list produced by TorrentStreamProvider.
-        // For now, return nil — .torrent file candidates shown as info only.
-        return nil
     }
 }
 
@@ -359,7 +402,6 @@ private struct StreamCandidateRow: View {
             )
         }
         .buttonStyle(.plain)
-        .focusableOnTV()
     }
 
     @ViewBuilder
@@ -396,6 +438,45 @@ private struct StreamCandidateRow: View {
     }
 }
 
+// MARK: - Where to watch row
+
+private struct WhereToWatchRow: View {
+    let candidate: StreamCandidate
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        #if os(tvOS)
+        content.focusable()
+        #else
+        Button {
+            if case .external(let url) = candidate.location { openURL(url) }
+        } label: { content }
+        .buttonStyle(.plain)
+        #endif
+    }
+
+    private var content: some View {
+        HStack(spacing: Metrics.s(10)) {
+            Image(systemName: Platform.isTV ? "tv" : "arrow.up.right.square")
+                .foregroundStyle(Theme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(candidate.externalService?.name ?? candidate.providerName)
+                    .font(.casa(14, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                if let detail = candidate.externalService?.detail {
+                    Text(detail)
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(Metrics.s(12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
+    }
+}
+
 // MARK: - Per-provider status chip
 
 private struct ProviderStatusChip: View {
@@ -409,7 +490,10 @@ private struct ProviderStatusChip: View {
                 .font(.casa(10, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
             if case .finished(let count, _) = outcome.status {
-                Text("\(count)").font(.casa(10)).foregroundStyle(Theme.textSecondary)
+                // "0 of 20" when results were discarded as a different title, so the count
+                // is not mistaken for streams that should be listed.
+                Text(outcome.rejected > 0 ? "\(max(count - outcome.rejected, 0)) of \(count) matched" : "\(count)")
+                    .font(.casa(10)).foregroundStyle(Theme.textSecondary)
             }
         }
         .padding(.horizontal, Metrics.s(7))
@@ -510,9 +594,12 @@ private extension ProviderOutcome.Status {
 private extension QualityMode {
     var shortLabel: String {
         switch self {
-        case .preferUHD: return "Prefer 4K"
+        case .preferUHD: return "All resolutions"
         case .uhdOnly: return "4K only"
-        case .allowFHDFallback: return "Allow 1080p"
+        case .allowFHDFallback: return "4K and 1080p"
+        case .fhdOnly: return "1080p only"
+        case .hd720Only: return "720p only"
+        case .sdOnly: return "SD only"
         }
     }
 }

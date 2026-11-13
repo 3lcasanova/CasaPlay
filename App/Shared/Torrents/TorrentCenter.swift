@@ -40,6 +40,11 @@ final class TorrentCenter {
             .flatMap { try? JSONDecoder().decode([TorrentFeed].self, from: $0) } ?? []
         let engine = TorrentEngine(root: Self.storageRoot(), settings: settings, peerFactory: NetworkPeerTransport.factory)
         self.engine = engine
+        #if DEBUG
+        // One line at launch so a device console shows what the storage check will see.
+        let budget = StorageBudget.volume(of: Self.storageRoot(), limit: settings.storageLimit, reserve: settings.reserveFreeSpace)
+        print("CASAPLAY storage: free=\(budget.freeSpace().map(String.init) ?? "unknown") reserve=\(budget.reserve) limit=\(budget.limit) settingsReserve=\(settings.reserveFreeSpace)")
+        #endif
         TorrentResourceLoader.engine = engine
     }
 
@@ -104,10 +109,14 @@ final class TorrentCenter {
         await perform { try await self.engine.add(torrentFile: data).infoHash }
     }
 
+    func add(torrentURL url: URL) async -> InfoHash? {
+        await perform { try await self.engine.add(torrentURL: url).infoHash }
+    }
+
     func add(_ candidate: TorrentCandidate) async -> InfoHash? {
         if let magnet = candidate.magnet { return await add(magnet: magnet) }
         guard let url = candidate.torrentURL else { return nil }
-        return await perform { try await self.engine.add(torrentURL: url).infoHash }
+        return await add(torrentURL: url)
     }
 
     private func perform(_ body: () async throws -> InfoHash) async -> InfoHash? {
@@ -145,6 +154,9 @@ final class TorrentCenter {
 
     func select(_ hash: InfoHash, file: Int) async -> Bool {
         do {
+            // Choosing a file to play is an explicit request to transfer, so a torrent that
+            // was paused (by the user, or by an earlier error) starts again.
+            await engine.session(hash)?.resumeIfPaused()
             try await engine.session(hash)?.selectFile(file)
             return true
         } catch {
