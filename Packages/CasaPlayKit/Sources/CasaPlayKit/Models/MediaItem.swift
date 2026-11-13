@@ -46,6 +46,8 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     /// Placeholder artwork colour (0...360) until real posters arrive from TMDB.
     public var artHue: Double
     public var streamURL: URL?
+    /// HTTP headers to inject when playing this item (e.g. Referer from a Stremio proxyHeaders manifest).
+    public var streamHeaders: [String: String]?
     public var progressSeconds: TimeInterval
     public var isWatched: Bool
     public var isFavorite: Bool
@@ -71,6 +73,7 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         cast: [CastMember] = [],
         artHue: Double = 30,
         streamURL: URL? = nil,
+        streamHeaders: [String: String]? = nil,
         progressSeconds: TimeInterval = 0,
         isWatched: Bool = false,
         isFavorite: Bool = false,
@@ -95,6 +98,7 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         self.cast = cast
         self.artHue = artHue
         self.streamURL = streamURL
+        self.streamHeaders = streamHeaders
         self.progressSeconds = progressSeconds
         self.isWatched = isWatched
         self.isFavorite = isFavorite

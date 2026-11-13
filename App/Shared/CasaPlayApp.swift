@@ -11,6 +11,7 @@ struct CasaPlayApp: App {
             RootView()
                 .environment(appState)
                 .environment(TorrentCenter.shared)
+                .environment(ExtensionCenter.shared)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

@@ -16,6 +16,14 @@ jobs:
       - name: Test CasaPlayKit
         working-directory: Packages/CasaPlayKit
         run: swift test
+      - name: Live AVFoundation probe test (macOS)
+        working-directory: Packages/CasaPlayKit
+        # Requires a real network connection. Set CASAPLAY_LIVE_EXTENSIONS=1 in repo settings
+        # (Actions → Secrets and variables → Variables) to enable. Off by default.
+        if: ${{ env.CASAPLAY_LIVE_EXTENSIONS == '1' }}
+        env:
+          CASAPLAY_LIVE_EXTENSIONS: ${{ vars.CASAPLAY_LIVE_EXTENSIONS }}
+        run: swift test --filter LiveExtensionTests.testAVFoundationReadsRealFile
 
   app:
     runs-on: macos-15

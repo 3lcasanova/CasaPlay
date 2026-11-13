@@ -42,7 +42,8 @@ struct PlayerScreen: View {
                         },
                         onProgress: { seconds in
                             app.updateProgress(id: item.id, seconds: seconds)
-                        }
+                        },
+                        streamHeaders: item.streamHeaders
                     )
                     .ignoresSafeArea()
                 } else {
@@ -158,6 +159,7 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
     let subtitleStyle: SubtitleStyle
     let onSelectSubtitle: (String?) -> Void
     let onProgress: (TimeInterval) -> Void
+    var streamHeaders: [String: String]? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onProgress: onProgress)
@@ -173,6 +175,12 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             let loader = TorrentResourceLoader()
             asset.resourceLoader.setDelegate(loader, queue: loader.queue)
             context.coordinator.torrentLoader = loader  // the asset only keeps a weak reference
+            playerItem = AVPlayerItem(asset: asset)
+        } else if let headers = streamHeaders, !headers.isEmpty {
+            // Stremio proxyHeaders: inject via AVURLAsset HTTP options (undocumented key).
+            var options: [String: Any] = [:]
+            options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            let asset = AVURLAsset(url: url, options: options)
             playerItem = AVPlayerItem(asset: asset)
         } else {
             playerItem = AVPlayerItem(url: url)
