@@ -660,7 +660,7 @@ private extension ExtensionFormat {
     }
 }
 
-private extension ExtensionCompatibility {
+private extension Compatibility {
     var limitedReason: String? {
         if case .limited(let r) = self { return r }
         return nil

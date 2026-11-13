@@ -252,6 +252,16 @@ public struct ProviderOutcome: Equatable, Sendable, Identifiable {
 }
 
 public struct SourceResults: Equatable, Sendable {
+    /// Placeholder used before the first aggregator snapshot arrives.
+    public init() {
+        self.request = ContentRequest(kind: .movie, id: "", title: "", year: nil)
+        self.mode = .preferUHD
+    }
+    /// Used by SourceAggregator to build a live snapshot.
+    public init(request: ContentRequest, mode: QualityMode) {
+        self.request = request
+        self.mode = mode
+    }
     public var request: ContentRequest
     public var mode: QualityMode
     public var outcomes: [ProviderOutcome] = []

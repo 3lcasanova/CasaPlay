@@ -111,9 +111,10 @@ struct StreamSourcesView: View {
                 }
                 if !results.rejected.isEmpty {
                     DisclosureGroup {
-                        ForEach(results.rejected) { r in
+                        ForEach(results.rejected.indices, id: \.self) { i in
+                            let r = results.rejected[i]
                             HStack {
-                                Text(r.filename ?? r.id)
+                                Text(r.candidate.filename ?? r.candidate.id)
                                     .font(.casa(11))
                                     .foregroundStyle(Theme.textSecondary)
                                     .lineLimit(1)
@@ -143,7 +144,7 @@ struct StreamSourcesView: View {
             Image(systemName: "magnifyingglass")
                 .font(.casa(36))
                 .foregroundStyle(Theme.textSecondary)
-            Text(results.emptyMessage)
+            Text(results.emptyMessage ?? "No streams found.")
                 .font(.casa(14))
                 .foregroundStyle(Theme.textPrimary)
                 .multilineTextAlignment(.center)
@@ -309,7 +310,7 @@ private struct ProviderStatusChip: View {
             Circle()
                 .fill(outcome.status.color)
                 .frame(width: 6, height: 6)
-            Text(outcome.providerName)
+            Text(outcome.name)
                 .font(.casa(10, weight: .semibold))
                 .foregroundStyle(Theme.textSecondary)
             if case .finished(let count, _) = outcome.status {
@@ -400,7 +401,7 @@ private extension DynamicRange {
     }
 }
 
-private extension ProviderStatus {
+private extension ProviderOutcome.Status {
     var color: Color {
         switch self {
         case .waiting: Theme.textSecondary

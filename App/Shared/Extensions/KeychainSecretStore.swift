@@ -23,7 +23,7 @@ final class KeychainSecretStore: SecretStore, @unchecked Sendable {
         return String(data: data, encoding: .utf8)
     }
 
-    func set(_ key: String, _ value: String) {
+    func set(_ value: String, for key: String) throws {
         let data = Data(value.utf8)
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
