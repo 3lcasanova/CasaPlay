@@ -4,7 +4,7 @@ import SwiftUI
 import CasaPlayKit
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case home, search, movies, favorites, torrents, extensions, servers, sources, profile
+    case home, search, movies, favorites, torrents, extensions, servers, profile
 
     var id: String { rawValue }
 
@@ -17,7 +17,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .torrents: return "Torrents"
         case .extensions: return "Extensions"
         case .servers: return "Servers"
-        case .sources: return "Sources"
         case .profile: return "Profile"
         }
     }
@@ -31,7 +30,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .torrents: return "arrow.down.circle"
         case .extensions: return "puzzlepiece.extension"
         case .servers: return "server.rack"
-        case .sources: return "externaldrive"
         case .profile: return "person.crop.circle"
         }
     }
@@ -81,7 +79,6 @@ final class AppState {
     private var watchMap: [String: WatchRecord]
 
     var profiles: [Profile]
-    var sources: [MediaSource] = SampleData.sources
     var discover = DiscoverFeed()
     var activeProfileID: UUID {
         didSet { ProfileStore.saveActiveID(activeProfileID) }

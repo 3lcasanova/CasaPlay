@@ -73,7 +73,7 @@ struct ProfileView: View {
                         } label: {
                             SettingsLinkRow(
                                 title: "Online services",
-                                detail: "IMDb ratings and OpenSubtitles",
+                                detail: "TMDB, IMDb ratings and OpenSubtitles",
                                 symbol: "globe"
                             )
                         }
@@ -95,7 +95,7 @@ struct ProfileView: View {
                         Text("Designed by 𝐂𝓪sΔηⓞשα")
                             .font(.casa(12))
                             .foregroundStyle(Theme.textSecondary)
-                        Text("Early build · sample library")
+                        Text("This product uses the TMDB API but is not endorsed or certified by TMDB.")
                             .font(.casa(12))
                             .foregroundStyle(Theme.textSecondary)
                     }

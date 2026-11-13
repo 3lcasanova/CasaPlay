@@ -93,7 +93,6 @@ struct RootView: View {
         case .torrents: TorrentsView()
         case .extensions: ExtensionsView()
         case .servers: ServersView()
-        case .sources: SourcesView()
         case .profile: ProfileView()
         }
     }
