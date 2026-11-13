@@ -243,3 +243,30 @@ struct Shelf<Content: View>: View {
         }
     }
 }
+
+/// IMDb's yellow mark with the rating, e.g. [IMDb] 7.6 · 128K.
+struct IMDbBadge: View {
+    let rating: Double
+    var votes: Int? = nil
+
+    var body: some View {
+        HStack(spacing: Metrics.s(6)) {
+            Text("IMDb")
+                .font(.casa(11, weight: .heavy))
+                .foregroundStyle(Color.black)
+                .padding(.horizontal, Metrics.s(5))
+                .padding(.vertical, Metrics.s(1.5))
+                .background(Color(red: 0.961, green: 0.773, blue: 0.094), in: RoundedRectangle(cornerRadius: Metrics.s(3)))
+            Text(IMDb.ratingText(rating))
+                .font(.casa(13, weight: .bold))
+                .foregroundStyle(Theme.textPrimary)
+            if let votes {
+                Text(IMDb.votesText(votes))
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("IMDb rating \(IMDb.ratingText(rating)) out of 10")
+    }
+}

@@ -34,6 +34,12 @@ struct PlayerScreen: View {
                         url: url,
                         title: item.title,
                         startAt: item.canResume ? item.progressSeconds : 0,
+                        subtitle: app.activeSubtitle(for: item.id),
+                        subtitleOptions: app.subtitleOptions(for: item.id),
+                        subtitleStyle: app.subtitleStyle,
+                        onSelectSubtitle: { trackID in
+                            app.selectSubtitle(trackID, for: item.id)
+                        },
                         onProgress: { seconds in
                             app.updateProgress(id: item.id, seconds: seconds)
                         }
@@ -70,6 +76,7 @@ struct PlayerScreen: View {
                     }
                     .accessibilityLabel("Close player")
                     Spacer()
+                    subtitleMenu
                 }
                 .padding()
                 Spacer()
@@ -77,6 +84,40 @@ struct PlayerScreen: View {
             #endif
         }
     }
+
+    #if !os(tvOS)
+    /// iPhone and iPad: CasaPlay's subtitle tracks. Subtitles inside the video stay in the player's own menu.
+    private var subtitleMenu: some View {
+        let options = app.subtitleOptions(for: item.id)
+        let active = app.activeSubtitle(for: item.id)
+        return Menu {
+            Button {
+                app.selectSubtitle(nil, for: item.id)
+            } label: {
+                if active == nil { Label("Off", systemImage: "checkmark") } else { Text("Off") }
+            }
+            ForEach(options) { option in
+                Button {
+                    app.selectSubtitle(option.id, for: item.id)
+                } label: {
+                    if active?.id == option.id {
+                        Label(option.track.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(option.track.displayName)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: active == nil ? "captions.bubble" : "captions.bubble.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(Color.white)
+                .padding(10)
+                .background(Color.black.opacity(0.55), in: Circle())
+        }
+        .accessibilityLabel("Subtitles")
+        .opacity(options.isEmpty ? 0 : 1)
+    }
+    #endif
 
     private func message(title: String, detail: String) -> some View {
         VStack(spacing: Metrics.s(10)) {
@@ -103,10 +144,15 @@ struct PlayerScreen: View {
 
 /// Wraps AVPlayerViewController. Reports the playback position every 5 seconds
 /// and once more when the player goes away, so "Continue Watching" stays accurate.
+/// CasaPlay's own subtitles are drawn in the player's content overlay, under the controls.
 struct AVPlayerControllerView: UIViewControllerRepresentable {
     let url: URL
     let title: String
     let startAt: TimeInterval
+    let subtitle: LoadedSubtitle?
+    let subtitleOptions: [LoadedSubtitle]
+    let subtitleStyle: SubtitleStyle
+    let onSelectSubtitle: (String?) -> Void
     let onProgress: (TimeInterval) -> Void
 
     func makeCoordinator() -> Coordinator {
@@ -131,6 +177,20 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
         controller.appliesPreferredDisplayCriteriaAutomatically = true
         #endif
 
+        // Subtitle overlay.
+        let coordinator = context.coordinator
+        let overlay = UIHostingController(rootView: SubtitleOverlayView(model: coordinator.overlay))
+        overlay.view.backgroundColor = .clear
+        overlay.view.isUserInteractionEnabled = false
+        if let host = controller.contentOverlayView {
+            controller.addChild(overlay)
+            overlay.view.frame = host.bounds
+            overlay.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            host.addSubview(overlay.view)
+            overlay.didMove(toParent: controller)
+        }
+        apply(to: controller, coordinator: coordinator)
+
         if startAt > 1 {
             player.seek(
                 to: CMTime(seconds: startAt, preferredTimescale: 600),
@@ -139,14 +199,19 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             )
         }
 
-        let coordinator = context.coordinator
-        let token = player.addPeriodicTimeObserver(
+        let progressToken = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 5, preferredTimescale: 1),
             queue: .main
         ) { time in
             coordinator.report(time)
         }
-        coordinator.attach(player: player, token: token)
+        let subtitleToken = player.addPeriodicTimeObserver(
+            forInterval: CMTime(value: 1, timescale: 10),
+            queue: .main
+        ) { time in
+            coordinator.tick(time)
+        }
+        coordinator.attach(player: player, tokens: [progressToken, subtitleToken])
 
         player.play()
         return controller
@@ -154,6 +219,38 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
         context.coordinator.onProgress = onProgress
+        apply(to: uiViewController, coordinator: context.coordinator)
+    }
+
+    private func apply(to controller: AVPlayerViewController, coordinator: Coordinator) {
+        coordinator.overlay.style = subtitleStyle
+        coordinator.overlay.setTrack(subtitle)
+
+        #if os(tvOS)
+        // tvOS: a Subtitles menu in the transport bar, next to Apple's own audio and subtitle menus.
+        guard !subtitleOptions.isEmpty else {
+            controller.transportBarCustomMenuItems = []
+            return
+        }
+        let select = onSelectSubtitle
+        let activeID = subtitle?.id
+        var actions: [UIMenuElement] = [
+            UIAction(title: "Off", state: activeID == nil ? .on : .off) { _ in select(nil) }
+        ]
+        for option in subtitleOptions {
+            actions.append(UIAction(title: option.track.displayName, state: activeID == option.id ? .on : .off) { _ in
+                select(option.id)
+            })
+        }
+        controller.transportBarCustomMenuItems = [
+            UIMenu(
+                title: "CasaPlay Subtitles",
+                image: UIImage(systemName: "captions.bubble"),
+                options: [.singleSelection],
+                children: actions
+            )
+        ]
+        #endif
     }
 
     static func dismantleUIViewController(_ uiViewController: AVPlayerViewController, coordinator: Coordinator) {
@@ -162,16 +259,17 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
 
     final class Coordinator {
         var onProgress: (TimeInterval) -> Void
+        let overlay = SubtitleOverlayModel()
         private var player: AVPlayer?
-        private var token: Any?
+        private var tokens: [Any] = []
 
         init(onProgress: @escaping (TimeInterval) -> Void) {
             self.onProgress = onProgress
         }
 
-        func attach(player: AVPlayer, token: Any) {
+        func attach(player: AVPlayer, tokens: [Any]) {
             self.player = player
-            self.token = token
+            self.tokens = tokens
         }
 
         func report(_ time: CMTime) {
@@ -180,15 +278,21 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             onProgress(seconds)
         }
 
+        func tick(_ time: CMTime) {
+            let seconds = time.seconds
+            guard seconds.isFinite else { return }
+            overlay.time = seconds
+        }
+
         func stop() {
             guard let player else { return }
             report(player.currentTime())
-            if let token {
+            for token in tokens {
                 player.removeTimeObserver(token)
             }
             player.pause()
             self.player = nil
-            self.token = nil
+            self.tokens = []
         }
     }
 }

@@ -33,6 +33,17 @@ struct ProfileView: View {
                         }
                         .posterButtonStyle()
 
+                        NavigationLink {
+                            OnlineServicesView()
+                        } label: {
+                            SettingsLinkRow(
+                                title: "Online services",
+                                detail: "IMDb ratings and OpenSubtitles",
+                                symbol: "globe"
+                            )
+                        }
+                        .posterButtonStyle()
+
                         if app.activeProfile.isKids {
                             Text("Kids profile: only G and PG titles are shown.")
                                 .font(.casa(12))

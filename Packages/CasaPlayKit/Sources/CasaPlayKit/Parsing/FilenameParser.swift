@@ -12,19 +12,23 @@ public struct ParsedFilename: Equatable, Sendable {
     public var season: Int?
     public var episode: Int?
     public var resolution: String?
+    /// IMDb ID written into the name, e.g. "Night Ferry (2025) {imdb-tt1234567}".
+    public var imdbID: String?
 
     public init(
         title: String,
         year: Int? = nil,
         season: Int? = nil,
         episode: Int? = nil,
-        resolution: String? = nil
+        resolution: String? = nil,
+        imdbID: String? = nil
     ) {
         self.title = title
         self.year = year
         self.season = season
         self.episode = episode
         self.resolution = resolution
+        self.imdbID = imdbID
     }
 
     public var isEpisode: Bool { season != nil && episode != nil }
@@ -68,6 +72,14 @@ public enum FilenameParser {
             }
         }
 
+        let imdbID = IMDb.extractID(from: name)
+        // Drop "{imdb-tt…}", "[tt…]" and bare IMDb IDs so they never end up in the title.
+        name = name.replacingOccurrences(
+            of: #"[\{\[\(]?\s*(?:imdb(?:id)?[-=_ ]?)?tt\d{7,9}\s*[\}\]\)]?"#,
+            with: " ",
+            options: [.regularExpression, .caseInsensitive]
+        )
+
         name = name
             .replacingOccurrences(of: ".", with: " ")
             .replacingOccurrences(of: "_", with: " ")
@@ -100,7 +112,8 @@ public enum FilenameParser {
             year: year,
             season: season,
             episode: episode,
-            resolution: resolution
+            resolution: resolution,
+            imdbID: imdbID
         )
     }
 

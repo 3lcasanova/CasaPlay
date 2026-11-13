@@ -78,9 +78,14 @@ struct HeroView: View {
                     .font(.casa(34, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
 
-                Text(item.metaLine)
-                    .font(.casa(13))
-                    .foregroundStyle(Theme.textSecondary)
+                HStack(spacing: Metrics.s(12)) {
+                    Text(item.metaLine)
+                        .font(.casa(13))
+                        .foregroundStyle(Theme.textSecondary)
+                    if let rating = item.imdbRating {
+                        IMDbBadge(rating: rating)
+                    }
+                }
 
                 HStack(spacing: Metrics.s(6)) {
                     ForEach(item.file.badges, id: \.self) { badge in

@@ -15,16 +15,23 @@ This is Phase 0 and the start of Phase 1 from the design canvas.
   - filename parser (`Movie.Name.2025.2160p.mkv`)
   - SRT and WebVTT parsing, subtitle selection and style
   - the playback router that decides Apple engine, server stream or compatibility engine
-  - unit tests for all of it
+  - IMDb: IDs read from file names, links, and ratings through OMDb
+  - OpenSubtitles search, download and sign-in
+  - subtitle files next to a video (`Movie.fr.forced.srt`), with any text encoding
+  - unit tests for all of it, using a fake network
+- **IMDb** rating badge on Home and Detail, and a link to the IMDb page on iPhone and iPad.
+- **Subtitles** drawn by CasaPlay over the video in the viewer's style (size, colour, background, position, delay). Choose a track on the Detail screen or in the player: the transport bar menu on Apple TV, the captions button on iPhone and iPad. "Find subtitles online" searches OpenSubtitles.
+- **Online services** (Profile › Online services): enter an OMDb key for IMDb ratings and an OpenSubtitles API key. Both are free. Keys stay on the device.
 
 **Sample data for now**
 - The 12 movies, 4 profiles and 5 sources are invented. Nothing reads your Mac or NAS yet.
 - Artwork is generated colour gradients. Real posters arrive with TMDB in Phase 2.
-- In Debug builds, Play streams Apple's public HLS test stream so you can try the player. Release builds show "No source yet".
+- In Debug builds, Play streams Apple's public HLS test stream so you can try the player, with a short English demo subtitle track. Release builds show "No source yet".
+- The sample titles are invented, so they have sample IMDb ratings but no IMDb IDs or pages.
 
 **Not built yet**
 - Source adapters (SMB, NFS, WebDAV, Plex, Jellyfin), library scanning and database
-- Custom subtitle overlay, OpenSubtitles
+- ASS/SSA styling and image subtitles (PGS, VobSub) in the overlay
 - Compatibility engine (VLCKit or FFmpeg)
 - iCloud sync, per-profile watch history
 

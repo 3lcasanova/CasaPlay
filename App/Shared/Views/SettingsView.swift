@@ -3,8 +3,8 @@
 import SwiftUI
 import CasaPlayKit
 
-/// Subtitle appearance. The style is stored on AppState and is applied by the
-/// subtitle renderer in Phase 3; for now the preview shows what it will look like.
+/// Subtitle appearance. The player's subtitle overlay draws file and online
+/// subtitles in this style.
 struct SettingsView: View {
     @Environment(AppState.self) private var app
 
@@ -71,29 +71,11 @@ struct SettingsView: View {
 private struct SubtitlePreview: View {
     let style: SubtitleStyle
 
-    private var textColor: Color {
-        switch style.textColor {
-        case .white: return Color.white
-        case .yellow: return Color.yellow
-        case .cyan: return Color.cyan
-        }
-    }
-
     var body: some View {
         ZStack(alignment: style.position == .bottom ? .bottom : .top) {
             ArtView(hue: 215)
 
-            Text("The last ferry leaves at midnight.")
-                .font(.system(size: Metrics.s(16) * style.size.scale, weight: .semibold))
-                .foregroundStyle(textColor)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, Metrics.s(10))
-                .padding(.vertical, Metrics.s(4))
-                .background(style.background == .box ? Color.black.opacity(0.7) : Color.clear)
-                .shadow(
-                    color: style.background == .softShadow ? Color.black.opacity(0.9) : Color.clear,
-                    radius: 4
-                )
+            SubtitleText(text: "The last ferry leaves at midnight.", style: style, baseSize: Metrics.s(16))
                 .padding(Metrics.s(14))
         }
         .frame(height: Metrics.s(150))

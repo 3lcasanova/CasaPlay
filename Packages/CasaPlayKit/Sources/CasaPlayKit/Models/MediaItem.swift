@@ -38,6 +38,10 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     public var sourceName: String
     public var collection: String?
     public var tmdbRating: Double?
+    /// "tt1234567". Links to the IMDb page and is the most reliable key for subtitles.
+    public var imdbID: String?
+    public var imdbRating: Double?
+    public var imdbVotes: Int?
     public var cast: [CastMember]
     /// Placeholder artwork colour (0...360) until real posters arrive from TMDB.
     public var artHue: Double
@@ -61,6 +65,9 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         sourceName: String = "",
         collection: String? = nil,
         tmdbRating: Double? = nil,
+        imdbID: String? = nil,
+        imdbRating: Double? = nil,
+        imdbVotes: Int? = nil,
         cast: [CastMember] = [],
         artHue: Double = 30,
         streamURL: URL? = nil,
@@ -82,6 +89,9 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         self.sourceName = sourceName
         self.collection = collection
         self.tmdbRating = tmdbRating
+        self.imdbID = imdbID
+        self.imdbRating = imdbRating
+        self.imdbVotes = imdbVotes
         self.cast = cast
         self.artHue = artHue
         self.streamURL = streamURL
@@ -104,6 +114,10 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     /// True when there is something worth resuming (more than 30 seconds in, less than 95% done).
     public var canResume: Bool {
         progressSeconds >= 30 && progressFraction < 0.95
+    }
+
+    public var imdbURL: URL? {
+        imdbID.flatMap { IMDb.titleURL($0) }
     }
 
     public var yearText: String {

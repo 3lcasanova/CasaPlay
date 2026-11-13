@@ -1,0 +1,122 @@
+// CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
+//
+// API keys for IMDb ratings (through OMDb) and OpenSubtitles. Saved on this device only.
+
+import SwiftUI
+import CasaPlayKit
+
+struct OnlineServicesView: View {
+    @AppStorage(ServiceKeys.omdb) private var omdbKey = ""
+    @AppStorage(ServiceKeys.openSubtitles) private var openSubtitlesKey = ""
+    @AppStorage(ServiceKeys.openSubtitlesUser) private var username = ""
+    @AppStorage(ServiceKeys.openSubtitlesToken) private var token = ""
+    @State private var password = ""
+    @State private var status: String?
+    @State private var isSigningIn = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
+                ServiceSection(
+                    title: "IMDb ratings",
+                    detail: "IMDb has no public API, so CasaPlay reads IMDb ratings through OMDb. Get a free key at omdbapi.com."
+                ) {
+                    SecureField("OMDb API key", text: $omdbKey)
+                        .fieldStyle()
+                }
+
+                ServiceSection(
+                    title: "OpenSubtitles",
+                    detail: "Search and download subtitles. Get a free API key at opensubtitles.com under API consumers. Signing in raises the daily download limit."
+                ) {
+                    SecureField("OpenSubtitles API key", text: $openSubtitlesKey)
+                        .fieldStyle()
+                    TextField("Username (optional)", text: $username)
+                        .fieldStyle()
+                        #if !os(tvOS)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
+                    SecureField("Password (optional)", text: $password)
+                        .fieldStyle()
+
+                    HStack(spacing: Metrics.s(10)) {
+                        Button(token.isEmpty ? "Sign in" : "Sign in again") {
+                            Task { await signIn() }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(openSubtitlesKey.isEmpty || username.isEmpty || password.isEmpty || isSigningIn)
+
+                        if !token.isEmpty {
+                            Button("Sign out") {
+                                token = ""
+                                status = "Signed out."
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        if isSigningIn { ProgressView() }
+                    }
+
+                    Text(status ?? (token.isEmpty ? "Not signed in." : "Signed in as \(username)."))
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+
+                Text("Keys stay on this device. CasaPlay only sends them to OMDb and OpenSubtitles.")
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .focusableOnTV()
+            }
+            .padding(Metrics.screenPadding)
+        }
+        .background(Theme.background.ignoresSafeArea())
+        .navigationTitle("Online services")
+    }
+
+    private func signIn() async {
+        isSigningIn = true
+        defer { isSigningIn = false }
+        do {
+            let client = OpenSubtitlesClient(apiKey: openSubtitlesKey)
+            token = try await client.login(username: username, password: password)
+            password = ""
+            status = "Signed in as \(username)."
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+}
+
+private struct ServiceSection<Content: View>: View {
+    let title: String
+    let detail: String
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(10)) {
+            Text(title)
+                .font(.casa(17, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+            Text(detail)
+                .font(.casa(12))
+                .foregroundStyle(Theme.textSecondary)
+            content()
+        }
+        .padding(Metrics.s(16))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func fieldStyle() -> some View {
+        #if os(tvOS)
+        self
+        #else
+        self
+            .textFieldStyle(.roundedBorder)
+            .font(.casa(14))
+        #endif
+    }
+}

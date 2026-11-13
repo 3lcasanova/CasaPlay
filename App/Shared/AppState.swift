@@ -29,6 +29,25 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
 }
 
+/// A subtitle track whose cues are in memory and can be drawn by the overlay.
+struct LoadedSubtitle: Identifiable, Hashable {
+    let track: SubtitleTrack
+    let cues: [SubtitleCue]
+    var id: String { track.id }
+}
+
+/// Keys for the online services, saved on this device.
+enum ServiceKeys {
+    static let omdb = "omdbAPIKey"
+    static let openSubtitles = "openSubtitlesAPIKey"
+    static let openSubtitlesToken = "openSubtitlesToken"
+    static let openSubtitlesUser = "openSubtitlesUsername"
+
+    static func value(_ key: String) -> String {
+        (UserDefaults.standard.string(forKey: key) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 /// One shared, in-memory store for the whole app.
 /// Phase 2 replaces `items` with a SwiftData library fed by real sources.
 /// Watch progress is shared between profiles until Phase 5 splits it per profile.
@@ -42,6 +61,12 @@ final class AppState {
     var selectedSection: AppSection = .home
     var playing: MediaItem?
     var router = PlaybackRouter()
+
+    /// Subtitle files loaded for each title (downloaded, or found next to the video).
+    var subtitleLibrary: [MediaItem.ID: [LoadedSubtitle]] = [:]
+    /// The viewer's choice per title: a track ID, or `Self.subtitlesOff`. No entry means automatic.
+    var subtitleChoice: [MediaItem.ID: String] = [:]
+    static let subtitlesOff = "off"
 
     var activeProfile: Profile {
         profiles.first { $0.id == activeProfileID } ?? profiles[0]
@@ -106,5 +131,77 @@ final class AppState {
         if items[index].progressFraction >= 0.95 {
             items[index].isWatched = true
         }
+    }
+
+    // MARK: Subtitles
+
+    func subtitleOptions(for id: MediaItem.ID) -> [LoadedSubtitle] {
+        var options = subtitleLibrary[id] ?? []
+        #if DEBUG
+        // Lets the overlay be tried on the test stream before real sources exist.
+        if options.isEmpty {
+            let demo = SubtitleTrack(
+                id: "demo-en",
+                languageCode: "en",
+                displayName: "English (demo)",
+                origin: .sidecar,
+                format: .srt
+            )
+            options.append(LoadedSubtitle(track: demo, cues: SRTParser.parse(SampleData.demoSubtitleSRT)))
+        }
+        #endif
+        return options
+    }
+
+    /// The track to draw, following the viewer's choice or the profile's languages.
+    func activeSubtitle(for id: MediaItem.ID) -> LoadedSubtitle? {
+        let options = subtitleOptions(for: id)
+        if let choice = subtitleChoice[id] {
+            return options.first { $0.id == choice }
+        }
+        let automatic = SubtitleSelector.defaultTrack(
+            from: options.map(\.track),
+            preferredLanguages: activeProfile.preferredSubtitleLanguages,
+            audioLanguage: nil
+        )
+        return options.first { $0.id == automatic?.id }
+    }
+
+    func selectSubtitle(_ trackID: String?, for id: MediaItem.ID) {
+        subtitleChoice[id] = trackID ?? Self.subtitlesOff
+    }
+
+    func addSubtitle(_ subtitle: LoadedSubtitle, for id: MediaItem.ID) {
+        var list = subtitleLibrary[id] ?? []
+        list.removeAll { $0.id == subtitle.id }
+        list.append(subtitle)
+        subtitleLibrary[id] = list
+        subtitleChoice[id] = subtitle.id
+    }
+
+    // MARK: Online services
+
+    var openSubtitlesClient: OpenSubtitlesClient? {
+        let key = ServiceKeys.value(ServiceKeys.openSubtitles)
+        guard !key.isEmpty else { return nil }
+        let token = ServiceKeys.value(ServiceKeys.openSubtitlesToken)
+        return OpenSubtitlesClient(apiKey: key, token: token.isEmpty ? nil : token)
+    }
+
+    var omdbClient: OMDbClient? {
+        let key = ServiceKeys.value(ServiceKeys.omdb)
+        return key.isEmpty ? nil : OMDbClient(apiKey: key)
+    }
+
+    /// Fetches the current IMDb rating for a title that has an IMDb ID.
+    /// Quietly does nothing without an OMDb key or an IMDb ID.
+    @MainActor
+    func refreshIMDb(for id: MediaItem.ID) async {
+        guard let client = omdbClient,
+              let imdbID = item(id: id)?.imdbID else { return }
+        guard let result = try? await client.rating(imdbID: imdbID),
+              let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].imdbRating = result.rating ?? items[index].imdbRating
+        items[index].imdbVotes = result.votes ?? items[index].imdbVotes
     }
 }

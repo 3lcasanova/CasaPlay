@@ -51,6 +51,7 @@ public enum SampleData {
         progress: Double = 0,
         watched: Bool = false,
         favorite: Bool = false,
+        imdb: Double? = nil,
         added: Double = 30,
         collection: String? = nil
     ) -> MediaItem {
@@ -65,6 +66,8 @@ public enum SampleData {
             file: media,
             sourceName: "Home NAS",
             collection: collection,
+            imdbRating: imdb,
+            imdbVotes: imdb.map { Int($0 * 9_000) },
             artHue: hue,
             progressSeconds: runtime * progress,
             isWatched: watched,
@@ -87,6 +90,8 @@ public enum SampleData {
             file: file(.mp4, .hevc, .dolbyVision, uhd: true, audio: [.eac3Atmos, .aac], subs: [.tx3g]),
             sourceName: "Home NAS",
             tmdbRating: 7.4,
+            imdbRating: 7.6,
+            imdbVotes: 128_456,
             cast: [
                 CastMember(name: "Mara Linden", role: "Capt. Hale"),
                 CastMember(name: "Teo Vasquez", role: "Daniel Ruiz"),
@@ -105,37 +110,37 @@ public enum SampleData {
 
         list.append(film("Salt & Iron", 2023, 105, "R", hue: 15,
                          media: file(.mkv, .h264, .sdr, uhd: false, audio: [.dts, .ac3], subs: [.srt]),
-                         genres: ["Drama", "Crime"], progress: 0.12, added: 3))
+                         genres: ["Drama", "Crime"], progress: 0.12, imdb: 6.9, added: 3))
         list.append(film("Orbit Nine", 2024, 118, "PG-13", hue: 235,
                          media: file(.mp4, .hevc, .hdr10, uhd: true, audio: [.eac3]),
-                         genres: ["Sci-Fi"], progress: 0.72, added: 2))
+                         genres: ["Sci-Fi"], progress: 0.72, imdb: 7.2, added: 2))
         list.append(film("The Quiet Mile", 2022, 96, "PG", hue: 130,
                          media: file(.mp4, .h264, .sdr, uhd: false, audio: [.aac]),
-                         watched: true, added: 40))
+                         watched: true, imdb: 7.0, added: 40))
         list.append(film("Cobalt Hour", 2021, 112, "R", hue: 250,
                          media: file(.mkv, .hevc, .hdr10, uhd: true, audio: [.truehd], subs: [.pgs]),
-                         genres: ["Thriller"], watched: true, added: 60))
+                         genres: ["Thriller"], watched: true, imdb: 6.6, added: 60))
         list.append(film("Wild Meridian", 2019, 128, "PG-13", hue: 85,
                          media: file(.mp4, .hevc, .sdr, uhd: true, audio: [.aac]),
-                         genres: ["Adventure"], progress: 0.4, added: 90))
+                         genres: ["Adventure"], progress: 0.4, imdb: 7.8, added: 90))
         list.append(film("Last Station", 2020, 101, "R", hue: 260,
                          media: file(.mp4, .h264, .sdr, uhd: false, audio: [.aac]),
-                         watched: true, added: 75))
+                         watched: true, imdb: 6.4, added: 75))
         list.append(film("Paper Moons", 2018, 94, "PG", hue: 300,
                          media: file(.m4v, .h264, .sdr, uhd: false, audio: [.aac, .ac3]),
-                         genres: ["Family"], added: 120))
+                         genres: ["Family"], imdb: 6.8, added: 120))
         list.append(film("Harbor Lights", 2024, 109, "PG-13", hue: 55,
                          media: file(.mp4, .hevc, .dolbyVision, uhd: true, audio: [.eac3Atmos]),
-                         progress: 0.4, favorite: true, added: 4, collection: "Harbor Lights Collection"))
+                         progress: 0.4, favorite: true, imdb: 7.1, added: 4, collection: "Harbor Lights Collection"))
         list.append(film("Kiln", 2023, 100, "R", hue: 20,
                          media: file(.avi, .h264, .sdr, uhd: false, audio: [.ac3]),
-                         watched: true, added: 150))
+                         watched: true, imdb: 6.2, added: 150))
         list.append(film("Tidewater", 2022, 107, "PG-13", hue: 175,
                          media: file(.mp4, .hevc, .hdr10, uhd: true, audio: [.eac3]),
-                         added: 8))
+                         imdb: 7.3, added: 8))
         list.append(film("Northbound", 2017, 99, "PG", hue: 225,
                          media: file(.mp4, .h264, .sdr, uhd: false, audio: [.aac]),
-                         watched: true, added: 200))
+                         watched: true, imdb: 6.7, added: 200))
 
         return list
     }()
@@ -154,6 +159,37 @@ public enum SampleData {
         MediaSource(name: "Jellyfin", detail: "Home server · jellyfin.local", kind: .jellyfin, status: .scanning),
         MediaSource(name: "Network share", detail: "WebDAV or NFS folder", kind: .network, status: .notSetUp)
     ]
+
+    /// A short English SRT used by debug builds to show the subtitle overlay on the
+    /// test stream. Invented lines, like the rest of the sample library.
+    public static let demoSubtitleSRT = """
+    1
+    00:00:02,000 --> 00:00:05,000
+    The last ferry leaves at midnight.
+
+    2
+    00:00:06,000 --> 00:00:09,500
+    Then we have until dawn
+    to find out who took the ledger.
+
+    3
+    00:00:11,000 --> 00:00:14,000
+    <i>Forty strangers. One way across.</i>
+
+    4
+    00:00:15,500 --> 00:00:19,000
+    Keep your voice down.
+    The engines can hear everything.
+
+    5
+    00:00:21,000 --> 00:00:24,000
+    These subtitles are a CasaPlay demo.
+
+    6
+    00:00:25,000 --> 00:00:29,000
+    Change their size, colour and position
+    in Profile › Subtitles & playback.
+    """
 
     public static let subtitleTracks: [SubtitleTrack] = [
         SubtitleTrack(id: "en-emb", languageCode: "en", displayName: "English", origin: .embedded, format: .tx3g),

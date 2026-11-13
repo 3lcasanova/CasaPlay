@@ -19,6 +19,7 @@ struct DetailView: View {
 private struct DetailContent: View {
     @Environment(AppState.self) private var app
     let item: MediaItem
+    @State private var showingSubtitleSearch = false
 
     var body: some View {
         let decision = app.router.decide(for: item.file)
@@ -38,6 +39,8 @@ private struct DetailContent: View {
 
                 playbackPanel(decision)
 
+                subtitlesPanel
+
                 if !item.cast.isEmpty {
                     castRow
                 }
@@ -48,6 +51,12 @@ private struct DetailContent: View {
         #if !os(tvOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .sheet(isPresented: $showingSubtitleSearch) {
+            SubtitleSearchView(item: item)
+        }
+        .task(id: item.id) {
+            await app.refreshIMDb(for: item.id)
+        }
     }
 
     // MARK: Header
@@ -64,9 +73,14 @@ private struct DetailContent: View {
                 Text(item.title)
                     .font(.casa(32, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
-                Text(item.metaLine)
-                    .font(.casa(13))
-                    .foregroundStyle(Theme.textSecondary)
+                HStack(spacing: Metrics.s(12)) {
+                    Text(item.metaLine)
+                        .font(.casa(13))
+                        .foregroundStyle(Theme.textSecondary)
+                    if let rating = item.imdbRating {
+                        IMDbBadge(rating: rating, votes: item.imdbVotes)
+                    }
+                }
                 if !item.genres.isEmpty {
                     Text(item.genres.joined(separator: " · "))
                         .font(.casa(13))
@@ -126,6 +140,17 @@ private struct DetailContent: View {
             }
             .buttonStyle(.bordered)
             .accessibilityLabel(item.isWatched ? "Mark as unwatched" : "Mark as watched")
+
+            #if !os(tvOS)
+            if let url = item.imdbURL {
+                Link(destination: url) {
+                    Text("IMDb")
+                        .font(.casa(13, weight: .heavy))
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Open on IMDb")
+            }
+            #endif
         }
         .padding(.horizontal, Metrics.screenPadding)
     }
@@ -191,6 +216,47 @@ private struct DetailContent: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         .padding(.horizontal, Metrics.screenPadding)
         .focusableOnTV()
+    }
+
+    // MARK: Subtitles
+
+    private var subtitlesPanel: some View {
+        let options = app.subtitleOptions(for: item.id)
+        let active = app.activeSubtitle(for: item.id)
+
+        return VStack(alignment: .leading, spacing: Metrics.s(10)) {
+            Text("Subtitles")
+                .font(.casa(19, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: Metrics.s(8)) {
+                    ChipButton(title: "Off", isSelected: active == nil) {
+                        app.selectSubtitle(nil, for: item.id)
+                    }
+                    ForEach(options) { option in
+                        ChipButton(title: option.track.displayName, isSelected: active?.id == option.id) {
+                            app.selectSubtitle(option.id, for: item.id)
+                        }
+                    }
+                }
+                .padding(.vertical, Platform.isTV ? 14 : 0)
+            }
+
+            Button {
+                showingSubtitleSearch = true
+            } label: {
+                Label("Find subtitles online", systemImage: "magnifyingglass")
+            }
+            .buttonStyle(.bordered)
+
+            Text(active.map { "\($0.track.displayName) · \($0.track.originLabel) · \($0.cues.count) lines. Style them in Profile › Subtitles & playback." }
+                 ?? "Subtitles from files and OpenSubtitles appear here. Subtitles inside the video are in the player's own menu.")
+                .font(.casa(12))
+                .foregroundStyle(Theme.textSecondary)
+                .focusableOnTV()
+        }
+        .padding(.horizontal, Metrics.screenPadding)
     }
 
     // MARK: Cast
