@@ -150,7 +150,7 @@ struct PosterCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.s(6)) {
-            ArtView(hue: item.artHue, title: item.title)
+            posterArt
                 .frame(width: Metrics.posterWidth, height: Metrics.posterWidth * 1.5)
                 .overlay(alignment: .topTrailing) {
                     if item.isWatched {
@@ -185,6 +185,19 @@ struct PosterCard: View {
             .frame(width: Metrics.posterWidth, alignment: .leading)
         }
     }
+
+    @ViewBuilder private var posterArt: some View {
+        if let path = item.posterPath, let url = TMDBClient.posterURL(path) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                default: ArtView(hue: item.artHue, title: item.title)
+                }
+            }
+        } else {
+            ArtView(hue: item.artHue, title: item.title)
+        }
+    }
 }
 
 struct LandscapeCard: View {
@@ -192,7 +205,7 @@ struct LandscapeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.s(6)) {
-            ArtView(hue: item.artHue, title: item.title)
+            landscapeArt
                 .frame(width: Metrics.landscapeWidth, height: Metrics.landscapeWidth * 9 / 16)
                 .overlay(alignment: .bottom) {
                     if item.canResume {
@@ -212,6 +225,19 @@ struct LandscapeCard: View {
                     .lineLimit(1)
             }
             .frame(width: Metrics.landscapeWidth, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder private var landscapeArt: some View {
+        if let path = item.backdropPath ?? item.posterPath, let url = TMDBClient.backdropURL(path) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
+                default: ArtView(hue: item.artHue, title: item.title)
+                }
+            }
+        } else {
+            ArtView(hue: item.artHue, title: item.title)
         }
     }
 }

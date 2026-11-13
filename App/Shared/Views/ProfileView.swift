@@ -5,6 +5,7 @@ import CasaPlayKit
 
 struct ProfileView: View {
     @Environment(AppState.self) private var app
+    @State private var showingAddProfile = false
 
     var body: some View {
         NavigationStack {
@@ -15,10 +16,37 @@ struct ProfileView: View {
                             Button {
                                 app.activeProfileID = profile.id
                             } label: {
-                                ProfileTile(profile: profile, isSelected: profile.id == app.activeProfileID)
+                                ProfileTile(
+                                    profile: profile,
+                                    isSelected: profile.id == app.activeProfileID,
+                                    canDelete: app.profiles.count > 1
+                                ) {
+                                    app.deleteProfile(id: profile.id)
+                                }
                             }
                             .posterButtonStyle()
                         }
+
+                        // Add profile button
+                        Button { showingAddProfile = true } label: {
+                            VStack(spacing: Metrics.s(8)) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Theme.surface)
+                                        .frame(width: Metrics.s(72), height: Metrics.s(72))
+                                    Image(systemName: "plus")
+                                        .font(.casa(26))
+                                        .foregroundStyle(Theme.accent)
+                                }
+                                .padding(Metrics.s(6))
+                                Text("Add Profile")
+                                    .font(.casa(13, weight: .semibold))
+                                    .foregroundStyle(Theme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                            .frame(width: Metrics.s(100))
+                        }
+                        .posterButtonStyle()
                     }
 
                     VStack(alignment: .leading, spacing: Metrics.s(12)) {
@@ -71,6 +99,11 @@ struct ProfileView: View {
             }
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Profile")
+            .sheet(isPresented: $showingAddProfile) {
+                AddProfileSheet { name, hue, isKids in
+                    app.addProfile(name: name, hue: hue, isKids: isKids)
+                }
+            }
         }
     }
 }
@@ -78,16 +111,33 @@ struct ProfileView: View {
 private struct ProfileTile: View {
     let profile: Profile
     let isSelected: Bool
+    let canDelete: Bool
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(spacing: Metrics.s(8)) {
-            AvatarView(text: profile.glyph, hue: profile.hue, size: Metrics.s(72))
-                .overlay(
-                    Circle()
-                        .stroke(isSelected ? Theme.accent : Color.clear, lineWidth: Metrics.s(3))
-                        .padding(-Metrics.s(5))
-                )
-                .padding(Metrics.s(6))
+            ZStack(alignment: .topTrailing) {
+                AvatarView(text: profile.glyph, hue: profile.hue, size: Metrics.s(72))
+                    .overlay(
+                        Circle()
+                            .stroke(isSelected ? Theme.accent : Color.clear, lineWidth: Metrics.s(3))
+                            .padding(-Metrics.s(5))
+                    )
+                    .padding(Metrics.s(6))
+
+                #if !os(tvOS)
+                if canDelete {
+                    Button(role: .destructive, action: onDelete) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.casa(20))
+                            .foregroundStyle(Theme.textSecondary)
+                            .background(Theme.background, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: Metrics.s(4), y: -Metrics.s(4))
+                }
+                #endif
+            }
 
             Text(profile.name)
                 .font(.casa(13, weight: .semibold))
@@ -99,6 +149,53 @@ private struct ProfileTile: View {
             }
         }
         .frame(width: Metrics.s(100))
+    }
+}
+
+private struct AddProfileSheet: View {
+    let onAdd: (String, Double, Bool) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var isKids = false
+    @State private var hue: Double = Double.random(in: 0..<360)
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Name") {
+                    TextField("Profile name", text: $name)
+                }
+                Section {
+                    Toggle("Kids profile", isOn: $isKids)
+                    HStack {
+                        Text("Avatar colour")
+                        Spacer()
+                        AvatarView(text: String(name.prefix(1).uppercased()).isEmpty ? "?" : String(name.prefix(1).uppercased()),
+                                   hue: hue, size: Metrics.s(36))
+                        Slider(value: $hue, in: 0...359)
+                            .frame(maxWidth: Metrics.s(140))
+                    }
+                }
+            }
+            .navigationTitle("New Profile")
+            #if !os(tvOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        onAdd(trimmed, hue, isKids)
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            #endif
+        }
     }
 }
 

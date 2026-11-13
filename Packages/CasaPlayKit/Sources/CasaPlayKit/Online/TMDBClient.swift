@@ -58,6 +58,12 @@ public struct TMDBClient {
                       as: TMDBShowDetail.self)
     }
 
+    public func seasonDetail(showID: Int, season: Int) async throws -> TMDBSeason {
+        try await get(path: "/tv/\(showID)/season/\(season)",
+                      params: [:],
+                      as: TMDBSeason.self)
+    }
+
     // MARK: - Image URLs
 
     /// Full URL for a poster path (e.g. "/abc123.jpg"). Width: 500px.
@@ -104,14 +110,16 @@ public struct TMDBClient {
         var item = MediaItem(
             title: detail.name,
             year: detail.firstAirYear,
-            kind: .movie,  // top-level show card shown as movie; episodes fetched separately
+            kind: .movie,  // top-level show card; episodes fetched via tmdbShowID
             runtimeSeconds: 0,
             overview: detail.overview ?? "",
             genres: detail.genres?.map(\.name) ?? [],
             file: MediaFileInfo(container: .mp4, videoCodec: .h264),
             tmdbRating: detail.vote_average,
             imdbID: imdbID,
-            cast: Array(cast)
+            cast: Array(cast),
+            tmdbShowID: detail.id,
+            numberOfSeasons: detail.number_of_seasons
         )
         item.posterPath = detail.poster_path
         item.backdropPath = detail.backdrop_path
@@ -224,11 +232,30 @@ public struct TMDBShowDetail: Decodable, Sendable {
     public let genres: [TMDBGenre]?
     public let external_ids: TMDBExternalIDs?
     public let credits: TMDBCredits?
+    public let number_of_seasons: Int?
 
     public var firstAirYear: Int? {
         guard let d = first_air_date, d.count >= 4 else { return nil }
         return Int(d.prefix(4))
     }
+}
+
+public struct TMDBSeason: Decodable, Sendable {
+    public let season_number: Int
+    public let name: String?
+    public let episodes: [TMDBEpisode]?
+}
+
+public struct TMDBEpisode: Decodable, Identifiable, Sendable {
+    public let id: Int
+    public let episode_number: Int
+    public let season_number: Int
+    public let name: String
+    public let overview: String?
+    public let still_path: String?
+    public let runtime: Int?
+    public let vote_average: Double?
+    public let air_date: String?
 }
 
 public struct TMDBGenre: Decodable, Sendable {

@@ -20,6 +20,7 @@ private struct DetailContent: View {
     @Environment(AppState.self) private var app
     let item: MediaItem
     @State private var showingSubtitleSearch = false
+    @State private var showingEpisodes = false
 
     var body: some View {
         let decision = app.router.decide(for: item.file)
@@ -53,6 +54,13 @@ private struct DetailContent: View {
         #endif
         .sheet(isPresented: $showingSubtitleSearch) {
             SubtitleSearchView(item: item)
+        }
+        .sheet(isPresented: $showingEpisodes) {
+            if item.tmdbShowID != nil {
+                EpisodesView(show: item,
+                             totalSeasons: episodeSeasonCount)
+                    .environment(app)
+            }
         }
         .task(id: item.id) {
             await app.refreshIMDb(for: item.id)
@@ -141,6 +149,15 @@ private struct DetailContent: View {
             .buttonStyle(.bordered)
             .accessibilityLabel(item.isWatched ? "Mark as unwatched" : "Mark as watched")
 
+            if item.tmdbShowID != nil {
+                Button {
+                    showingEpisodes = true
+                } label: {
+                    Label("Episodes", systemImage: "list.bullet")
+                }
+                .buttonStyle(.bordered)
+            }
+
             #if !os(tvOS)
             if let url = item.imdbURL {
                 Link(destination: url) {
@@ -154,6 +171,8 @@ private struct DetailContent: View {
         }
         .padding(.horizontal, Metrics.screenPadding)
     }
+
+    private var episodeSeasonCount: Int { item.numberOfSeasons ?? 1 }
 
     // MARK: How it plays
 

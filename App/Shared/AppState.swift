@@ -75,12 +75,23 @@ enum ServiceKeys {
 }
 
 /// One shared, in-memory store for the whole app.
-/// Phase 2 replaces `items` with a SwiftData library fed by real sources.
-/// Watch progress is shared between profiles until Phase 5 splits it per profile.
 @Observable
 final class AppState {
-    var items: [MediaItem] = SampleData.movies
-    var profiles: [Profile] = SampleData.profiles
+    var items: [MediaItem] = {
+        var base = SampleData.movies
+        let history = WatchHistory.load()
+        WatchHistory.apply(history, to: &base)
+        return base
+    }()
+    private var watchMap: [UUID: WatchRecord] = WatchHistory.load()
+
+    var profiles: [Profile] = {
+        let url = ProfileStore.storeURL
+        if let data = try? Data(contentsOf: url),
+           let saved = try? JSONDecoder().decode([Profile].self, from: data),
+           !saved.isEmpty { return saved }
+        return SampleData.profiles
+    }()
     var sources: [MediaSource] = SampleData.sources
     var activeProfileID: UUID = SampleData.profiles[0].id
     var subtitleStyle = SubtitleStyle.default
@@ -98,6 +109,19 @@ final class AppState {
 
     var activeProfile: Profile {
         profiles.first { $0.id == activeProfileID } ?? profiles[0]
+    }
+
+    func addProfile(name: String, hue: Double, isKids: Bool) {
+        let p = Profile(name: name, hue: hue, isKids: isKids)
+        profiles.append(p)
+        ProfileStore.save(profiles)
+    }
+
+    func deleteProfile(id: UUID) {
+        guard profiles.count > 1 else { return }
+        profiles.removeAll { $0.id == id }
+        if activeProfileID == id { activeProfileID = profiles[0].id }
+        ProfileStore.save(profiles)
     }
 
     /// What the active profile is allowed to see. The Kids profile only shows G and PG.
@@ -137,28 +161,39 @@ final class AppState {
         items[index].progressSeconds = 0
         items[index].isWatched = false
         playing = items[index]
+        persistWatch(items[index])
     }
 
     func toggleFavorite(_ id: MediaItem.ID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].isFavorite.toggle()
+        persistWatch(items[index])
     }
 
     func toggleWatched(_ id: MediaItem.ID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].isWatched.toggle()
-        if items[index].isWatched {
-            items[index].progressSeconds = 0
-        }
+        if items[index].isWatched { items[index].progressSeconds = 0 }
+        persistWatch(items[index])
     }
 
     func updateProgress(id: MediaItem.ID, seconds: TimeInterval) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].progressSeconds = seconds
         items[index].lastPlayedAt = Date()
-        if items[index].progressFraction >= 0.95 {
-            items[index].isWatched = true
-        }
+        if items[index].progressFraction >= 0.95 { items[index].isWatched = true }
+        persistWatch(items[index])
+    }
+
+    private func persistWatch(_ item: MediaItem) {
+        watchMap[item.id] = WatchRecord(
+            id: item.id,
+            progressSeconds: item.progressSeconds,
+            isWatched: item.isWatched,
+            isFavorite: item.isFavorite,
+            lastPlayedAt: item.lastPlayedAt
+        )
+        WatchHistory.save(watchMap)
     }
 
     // MARK: Subtitles

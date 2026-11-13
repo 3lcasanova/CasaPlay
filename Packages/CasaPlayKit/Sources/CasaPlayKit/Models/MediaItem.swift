@@ -49,6 +49,10 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     public var posterPath: String?
     /// TMDB backdrop path.
     public var backdropPath: String?
+    /// TMDB numeric show ID — present on TV show cards; enables episode browsing.
+    public var tmdbShowID: Int?
+    /// Number of seasons reported by TMDB — used to build the season picker.
+    public var numberOfSeasons: Int?
     public var streamURL: URL?
     /// HTTP headers to inject when playing this item (e.g. Referer from a Stremio proxyHeaders manifest).
     public var streamHeaders: [String: String]?
@@ -78,6 +82,8 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         artHue: Double = 30,
         posterPath: String? = nil,
         backdropPath: String? = nil,
+        tmdbShowID: Int? = nil,
+        numberOfSeasons: Int? = nil,
         streamURL: URL? = nil,
         streamHeaders: [String: String]? = nil,
         progressSeconds: TimeInterval = 0,
@@ -105,6 +111,8 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         self.artHue = artHue
         self.posterPath = posterPath
         self.backdropPath = backdropPath
+        self.tmdbShowID = tmdbShowID
+        self.numberOfSeasons = numberOfSeasons
         self.streamURL = streamURL
         self.streamHeaders = streamHeaders
         self.progressSeconds = progressSeconds
