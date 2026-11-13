@@ -10,6 +10,7 @@ struct StreamSourcesView: View {
     @Environment(ExtensionCenter.self) private var center
     @Environment(AppState.self) private var app
     @Environment(TorrentCenter.self) private var torrents
+    @Environment(ServerCenter.self) private var servers
     @Environment(\.dismiss) private var dismiss
 
     @State private var results = SourceResults()
@@ -205,7 +206,8 @@ struct StreamSourcesView: View {
         var providers: [any StreamProvider] = []
         // Enabled Stremio add-ons
         providers += await center.providers(for: request.stremioType, id: request.stremioID)
-        // TODO: Plex / Jellyfin providers (Phase 3)
+        // Self-hosted servers (Plex, Jellyfin)
+        providers += servers.providers()
         // TODO: TorrentCenter provider (Phase 4)
         return providers
     }

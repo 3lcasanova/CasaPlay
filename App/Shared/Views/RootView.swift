@@ -91,6 +91,7 @@ struct RootView: View {
         case .favorites: LibraryView(mode: .favorites)
         case .torrents: TorrentsView()
         case .extensions: ExtensionsView()
+        case .servers: ServersView()
         case .sources: SourcesView()
         case .profile: ProfileView()
         }
