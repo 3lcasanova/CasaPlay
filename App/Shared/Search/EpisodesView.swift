@@ -46,7 +46,7 @@ struct EpisodesView: View {
             .safeAreaInset(edge: .top) { seasonPicker }
         }
         .sheet(item: $streamingEpisode) { target in
-            StreamSourcesView(request: target.request)
+            StreamSourcesView(request: target.request, libraryItemID: target.episodeID)
         }
         .task(id: selectedSeason) { await loadSeason() }
     }
@@ -114,8 +114,11 @@ struct EpisodesView: View {
             episode: ep.episode_number,
             year: show.year
         )
+        let episodeID = app.registerEpisode(show: show, season: ep.season_number,
+                                            episode: ep.episode_number, runtimeMinutes: ep.runtime)
         streamingEpisode = EpisodeTarget(
             request: request,
+            episodeID: episodeID,
             title: "\(show.title) S\(String(format: "%02d", ep.season_number))E\(String(format: "%02d", ep.episode_number))"
         )
     }
@@ -124,9 +127,26 @@ struct EpisodesView: View {
 // MARK: - Episode row
 
 private struct EpisodeRow: View {
+    @Environment(AppState.self) private var app
     let episode: TMDBEpisode
     let show: MediaItem
     let onStream: () -> Void
+
+    private var record: WatchRecord? {
+        let key = AppState.episodeItem(show: show, season: episode.season_number,
+                                       episode: episode.episode_number, runtimeMinutes: episode.runtime).historyKey
+        // Episodes played this session are tracked live; earlier ones come from saved history.
+        if let live = app.episodes.first(where: { $0.historyKey == key }) {
+            return WatchRecord(key: key, progressSeconds: live.progressSeconds, isWatched: live.isWatched,
+                               isFavorite: live.isFavorite, lastPlayedAt: live.lastPlayedAt)
+        }
+        return app.watchRecord(forKey: key)
+    }
+
+    private var progressFraction: Double {
+        guard let record, let runtime = episode.runtime, runtime > 0 else { return 0 }
+        return min(record.progressSeconds / Double(runtime * 60), 1)
+    }
 
     var body: some View {
         Button(action: onStream) {
@@ -134,6 +154,22 @@ private struct EpisodeRow: View {
                 // Still image or placeholder
                 episodeThumb
                     .frame(width: Metrics.s(100), height: Metrics.s(56))
+                    .overlay(alignment: .bottom) {
+                        if progressFraction > 0 && record?.isWatched != true {
+                            GeometryReader { geo in
+                                Rectangle().fill(Theme.accent)
+                                    .frame(width: geo.size.width * progressFraction, height: 3)
+                                    .frame(maxHeight: .infinity, alignment: .bottom)
+                            }
+                        }
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if record?.isWatched == true {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Theme.accent)
+                                .padding(4)
+                        }
+                    }
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 VStack(alignment: .leading, spacing: Metrics.s(4)) {
@@ -196,5 +232,6 @@ private struct EpisodeRow: View {
 private struct EpisodeTarget: Identifiable {
     let id = UUID()
     let request: ContentRequest
+    let episodeID: UUID
     let title: String
 }

@@ -182,7 +182,42 @@ final class AppState {
     }
 
     func item(id: MediaItem.ID) -> MediaItem? {
-        items.first { $0.id == id }
+        items.first { $0.id == id } ?? episodes.first { $0.id == id }
+    }
+
+    // MARK: Episodes
+
+    /// Episodes being watched. Kept out of the library; their progress is saved like any title.
+    private(set) var episodes: [MediaItem] = []
+
+    static func episodeItem(show: MediaItem, season: Int, episode: Int, runtimeMinutes: Int?) -> MediaItem {
+        var item = MediaItem(
+            title: "\(show.title) S\(String(format: "%02d", season))E\(String(format: "%02d", episode))",
+            year: show.year,
+            kind: .episode,
+            runtimeSeconds: TimeInterval((runtimeMinutes ?? 0) * 60),
+            file: MediaFileInfo(container: .mp4, videoCodec: .h264),
+            artHue: show.artHue
+        )
+        item.posterPath = show.posterPath
+        item.backdropPath = show.backdropPath
+        return item
+    }
+
+    /// Returns the ID to play an episode under, creating it with any saved progress.
+    func registerEpisode(show: MediaItem, season: Int, episode: Int, runtimeMinutes: Int?) -> MediaItem.ID {
+        let fresh = Self.episodeItem(show: show, season: season, episode: episode, runtimeMinutes: runtimeMinutes)
+        if let existing = episodes.first(where: { $0.historyKey == fresh.historyKey }) {
+            return existing.id
+        }
+        var list = [fresh]
+        WatchHistory.apply(watchMap, to: &list)
+        episodes.append(list[0])
+        return fresh.id
+    }
+
+    func watchRecord(forKey key: String) -> WatchRecord? {
+        watchMap[key]
     }
 
     func play(_ item: MediaItem) {
@@ -221,6 +256,13 @@ final class AppState {
     }
 
     func updateProgress(id: MediaItem.ID, seconds: TimeInterval) {
+        if let index = episodes.firstIndex(where: { $0.id == id }) {
+            episodes[index].progressSeconds = seconds
+            episodes[index].lastPlayedAt = Date()
+            if episodes[index].progressFraction >= 0.95 { episodes[index].isWatched = true }
+            persistWatch(episodes[index])
+            return
+        }
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].progressSeconds = seconds
         items[index].lastPlayedAt = Date()
