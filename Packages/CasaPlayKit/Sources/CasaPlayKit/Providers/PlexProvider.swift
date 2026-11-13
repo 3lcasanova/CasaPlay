@@ -53,7 +53,6 @@ public struct PlexProvider: StreamProvider {
 
         return parts.map { part in
             let url = streamURL(partID: part.id)
-            let ext = (part.file as NSString).pathExtension.lowercased()
             var adv = AdvertisedQuality()
             adv.resolution = AdvertisedQuality.resolution(fromWidth: part.width, height: part.height)
             adv.sizeBytes = part.size

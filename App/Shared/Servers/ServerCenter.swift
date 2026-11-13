@@ -42,12 +42,15 @@ final class ServerCenter {
     }
 
     private func save() {
-        let store = ServerStore(servers: servers)
+        var store = ServerStore()
+        store.servers = servers
         guard let data = try? JSONEncoder().encode(store) else { return }
         try? FileManager.default.createDirectory(
             at: storeURL.deletingLastPathComponent(),
             withIntermediateDirectories: true)
-        try? data.write(to: storeURL, options: .atomic)
+        // .atomicWrite is the cross-platform name; fall back to plain write.
+        let opts: Data.WritingOptions = [.atomicWrite]
+        try? data.write(to: storeURL, options: opts)
     }
 
     // MARK: - Add / remove

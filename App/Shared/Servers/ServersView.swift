@@ -249,6 +249,22 @@ private struct AddServerSheet: View {
                         .font(.casa(12))
                         .foregroundStyle(Theme.textSecondary)
                 }
+
+                #if os(tvOS)
+                // tvOS has no toolbar; action buttons live in the form.
+                Section {
+                    if isAdding {
+                        HStack {
+                            ProgressView()
+                            Text("Connecting…").font(.casa(13)).foregroundStyle(Theme.textSecondary)
+                        }
+                    } else {
+                        Button("Add Server") { Task { await addServer() } }
+                            .disabled(!isValid)
+                    }
+                    Button("Cancel") { dismiss() }
+                }
+                #endif
             }
             .navigationTitle("Add Server")
             #if !os(tvOS)
@@ -265,13 +281,6 @@ private struct AddServerSheet: View {
                             .disabled(!isValid)
                     }
                 }
-            }
-            #else
-            // tvOS: buttons in the form body
-            Section {
-                Button("Add Server") { Task { await addServer() } }
-                    .disabled(!isValid || isAdding)
-                Button("Cancel") { dismiss() }
             }
             #endif
         }
