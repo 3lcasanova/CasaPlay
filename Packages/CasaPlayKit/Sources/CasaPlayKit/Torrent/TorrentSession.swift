@@ -23,6 +23,7 @@ public actor TorrentSession: PeerHost {
     private let root: URL
     private let transport: HTTPTransport
     private let peerFactory: PeerTransportFactory?
+    private let udpFactory: UDPExchangeFactory?
     private let usage: StorageUsage
     private let freeSpace: (@Sendable (URL) -> Int64?)?
     private var settings: TorrentSettings
@@ -68,6 +69,7 @@ public actor TorrentSession: PeerHost {
         settings: TorrentSettings,
         transport: HTTPTransport,
         peerFactory: PeerTransportFactory?,
+        udpFactory: UDPExchangeFactory? = nil,
         usage: StorageUsage,
         resume: ResumeData? = nil,
         freeSpace: (@Sendable (URL) -> Int64?)? = nil
@@ -80,6 +82,7 @@ public actor TorrentSession: PeerHost {
         self.settings = settings
         self.transport = transport
         self.peerFactory = peerFactory
+        self.udpFactory = udpFactory
         self.usage = usage
         self.localPeerID = Data("-CP0010-".utf8) + Data((0..<12).map { _ in UInt8.random(in: 0...255) })
         self.uploadLimiter = RateLimiter(bytesPerSecond: settings.uploadLimit)
@@ -489,17 +492,38 @@ public actor TorrentSession: PeerHost {
         }
     }
 
+    /// Used only when a torrent lists no tracker CasaPlay can reach.
+    static let fallbackTrackers: [URL] = [
+        "udp://tracker.opentrackr.org:1337/announce",
+        "http://tracker.opentrackr.org:1337/announce",
+        "udp://open.stealth.si:80/announce",
+        "udp://tracker.torrent.eu.org:451/announce",
+        "udp://exodus.desync.com:6969/announce"
+    ].compactMap(URL.init(string:))
+
     private func startPeerDiscovery() {
         guard !paused, !stopped, peerFactory != nil else { return }
-        let trackers = Array(Set((currentMetainfo?.trackers ?? []) + (magnet?.trackers ?? [])))
-        for tracker in trackers where ["http", "https"].contains(tracker.scheme?.lowercased() ?? "") {
+        var trackers = Array(Set((currentMetainfo?.trackers ?? []) + (magnet?.trackers ?? [])))
+            .filter(canAnnounce)
+        if trackers.isEmpty { trackers = Self.fallbackTrackers.filter(canAnnounce) }
+        for tracker in trackers {
             workers.append(Task { await self.trackerLoop(tracker) })
         }
     }
 
+    private nonisolated func canAnnounce(_ url: URL) -> Bool {
+        switch url.scheme?.lowercased() {
+        case "http", "https": return true
+        case "udp": return udpFactory != nil
+        default: return false
+        }
+    }
+
     private func trackerLoop(_ url: URL) async {
-        let client = HTTPTrackerClient(announce: url, transport: transport)
+        let http = HTTPTrackerClient(announce: url, transport: transport)
+        let udp = udpFactory.flatMap { UDPTrackerClient(announce: url, factory: $0) }
         var event: String? = "started"
+        var failures = 0
         while !Task.isCancelled, !paused {
             let left = currentMetainfo.map { info in
                 info.totalLength - (store?.storedBytes ?? 0)
@@ -509,11 +533,22 @@ public actor TorrentSession: PeerHost {
                 uploaded: uploaded, downloaded: downloaded, left: max(left, 0), event: event
             )
             var wait = 300
-            if let response = try? await client.announce(announce) {
+            let response: TrackerResponse?
+            if let udp {
+                response = try? await udp.announce(announce)
+            } else {
+                response = try? await http.announce(announce)
+            }
+            if let response {
                 event = nil
+                failures = 0
                 wait = response.interval
                 knownPeers.formUnion(response.peers)
                 connectMorePeers()
+            } else {
+                // Retry soon at first: UDP packets get lost, and a tracker may be briefly busy.
+                failures += 1
+                wait = min(15 << min(failures - 1, 4), 300)
             }
             try? await Task.sleep(nanoseconds: UInt64(wait) * 1_000_000_000)
         }

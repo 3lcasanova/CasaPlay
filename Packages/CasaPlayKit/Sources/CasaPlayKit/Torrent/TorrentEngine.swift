@@ -20,6 +20,7 @@ public actor TorrentEngine {
     private var settings: TorrentSettings
     private let transport: HTTPTransport
     private let peerFactory: PeerTransportFactory?
+    private let udpFactory: UDPExchangeFactory?
     private let freeSpace: (@Sendable (URL) -> Int64?)?
     private let usage = StorageUsage()
     private var sessions: [InfoHash: TorrentSession] = [:]
@@ -30,7 +31,9 @@ public actor TorrentEngine {
     ///   - peerFactory: makes connections to peers; nil disables peer-to-peer (web seeds only).
     public init(root: URL, settings: TorrentSettings = TorrentSettings(),
                 transport: HTTPTransport = URLSessionTransport(), peerFactory: PeerTransportFactory?,
+                udpFactory: UDPExchangeFactory? = UDPTrackerSupport.defaultFactory,
                 freeSpace: (@Sendable (URL) -> Int64?)? = nil) {
+        self.udpFactory = udpFactory
         self.freeSpace = freeSpace
         self.root = root.standardizedFileURL
         self.settings = settings
@@ -78,7 +81,7 @@ public actor TorrentEngine {
     private func makeSession(hash: InfoHash, magnet: MagnetLink?, metainfo: TorrentMetainfo?, resume: ResumeData?) -> TorrentSession {
         let session = TorrentSession(
             infoHash: hash, magnet: magnet, metainfo: metainfo, root: root, settings: settings,
-            transport: transport, peerFactory: peerFactory, usage: usage, resume: resume, freeSpace: freeSpace
+            transport: transport, peerFactory: peerFactory, udpFactory: udpFactory, usage: usage, resume: resume, freeSpace: freeSpace
         )
         sessions[hash] = session
         order.removeAll { $0 == hash }
