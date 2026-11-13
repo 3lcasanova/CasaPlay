@@ -267,9 +267,13 @@ final class StreamParsingTests: XCTestCase {
         XCTAssertEqual(trackers.map(\.absoluteString), ["https://t.example.org/announce"])
         var noTracker = streams[1]
         noTracker.sources = []
-        guard case .unsupported = StremioStreamProvider.location(noTracker) else {
-            return XCTFail("A torrent without trackers should be marked unsupported")
+        guard case .torrent(_, _, let none) = StremioStreamProvider.location(noTracker), none.isEmpty else {
+            return XCTFail("A torrent without trackers is kept; the engine uses public trackers")
         }
+        var udpOnly = streams[1]
+        udpOnly.sources = ["tracker:udp://tracker.opentrackr.org:1337/announce", "tracker:wss://x.example/announce"]
+        guard case .torrent(_, _, let udp) = StremioStreamProvider.location(udpOnly) else { return XCTFail() }
+        XCTAssertEqual(udp.map(\.absoluteString), ["udp://tracker.opentrackr.org:1337/announce"])
         for i in [2, 4] { guard case .unsupported = locations[i] else { return XCTFail("\(i)") } }
         guard case .external(let link) = locations[3] else { return XCTFail("an https externalUrl is a where-to-watch link") }
         XCTAssertEqual(link.absoluteString, "https://example.com/watch")

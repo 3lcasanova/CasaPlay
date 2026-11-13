@@ -188,15 +188,11 @@ public struct StremioStreamProvider: StreamProvider {
             return .http(url, headers: headers)
         }
         if let hex = s.infoHash, let hash = InfoHash(hex: hex.lowercased()) {
+            // Torrents with no usable tracker still play: the engine falls back to public trackers.
             let trackers = (s.sources ?? []).compactMap { src -> URL? in
                 guard src.hasPrefix("tracker:") else { return nil }
                 return URL(string: String(src.dropFirst("tracker:".count)))
-            }
-            guard trackers.contains(where: {
-                $0.host != nil && ["http", "https", "udp"].contains($0.scheme?.lowercased() ?? "")
-            }) else {
-                return .unsupported("This torrent has no supported tracker CasaPlay can contact. Import its .torrent file to see the file list.")
-            }
+            }.filter { $0.host != nil && ["http", "https", "udp"].contains($0.scheme?.lowercased() ?? "") }
             if let filename = s.behaviorHints?.filename,
                ["mkv", "avi", "webm"].contains((filename as NSString).pathExtension.lowercased()) {
                 return .unsupported("This file format requires a compatibility player.")
