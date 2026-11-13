@@ -73,6 +73,6 @@ Packages/CasaPlayKit/        models, parsers, subtitles, playback router, tests
 
 ## Before App Store
 
-- The iPhone and iPad app icon exists (`AppIcon`). Apple TV still needs its layered icon and Top Shelf images.
+- App icons exist: `AppIcon` for iPhone and iPad, and `App Icon & Top Shelf Image` for Apple TV (three-layer parallax icon plus Top Shelf and Top Shelf Wide). `Scripts/make_tv_assets.py` regenerates the Apple TV set.
 - Check the licence of any playback library you add. VLCKit is LGPL.
 - TMDB requires its attribution and logo. OpenSubtitles needs an API key.

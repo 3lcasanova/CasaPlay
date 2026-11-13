@@ -76,6 +76,7 @@ targets:
       base:
         PRODUCT_NAME: CasaPlay
         PRODUCT_BUNDLE_IDENTIFIER: com.casanova.casaplay
+        ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
     info:
       path: Config/tvOS/Info.plist
       properties:
