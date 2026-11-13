@@ -236,8 +236,8 @@ private struct StreamCandidateRow: View {
                             Text("may have expired").badgeStyle(.warning)
                         }
                     }
-                    if let size = candidate.fileSize {
-                        Text(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
+                    if let size = candidate.advertised.sizeBytes {
+                        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
                             .font(.casa(11))
                             .foregroundStyle(Theme.textSecondary)
                     }
@@ -396,7 +396,7 @@ private extension DynamicRange {
         case .hdr10Plus: return "HDR10+"
         case .hlg: return "HLG"
         case .dolbyVision: return "DV"
-        case .hdr: return "HDR"
+        case .pq: return "HDR (PQ)"
         }
     }
 }
@@ -405,8 +405,8 @@ private extension ProviderOutcome.Status {
     var color: Color {
         switch self {
         case .waiting: Theme.textSecondary
-        case .finished: .green
-        case .failed: .red
+        case .finished(_, _): .green
+        case .failed(_): .red
         case .timedOut: Color.orange
         }
     }
