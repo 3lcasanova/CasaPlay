@@ -21,6 +21,17 @@ private struct DetailContent: View {
     let item: MediaItem
     @State private var showingSubtitleSearch = false
     @State private var showingEpisodes = false
+    @State private var showingStreams = false
+
+    /// A film found online with no local file: playing it means picking a stream.
+    private var movieRequest: ContentRequest? {
+        guard item.tmdbShowID == nil, let imdb = item.imdbID, !imdb.isEmpty else { return nil }
+        return .movie(id: imdb, title: item.title, year: item.year)
+    }
+
+    private var needsStream: Bool {
+        movieRequest != nil && item.streamURL == nil && item.sourceName.isEmpty
+    }
 
     var body: some View {
         let decision = app.router.decide(for: item.file)
@@ -55,6 +66,11 @@ private struct DetailContent: View {
         .sheet(isPresented: $showingSubtitleSearch) {
             SubtitleSearchView(item: item)
         }
+        .sheet(isPresented: $showingStreams) {
+            if let request = movieRequest {
+                StreamSourcesView(request: request, libraryItemID: item.id)
+            }
+        }
         .sheet(isPresented: $showingEpisodes) {
             if item.tmdbShowID != nil {
                 EpisodesView(show: item,
@@ -71,7 +87,17 @@ private struct DetailContent: View {
 
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
-            ArtView(hue: item.artHue, cornerRadius: 0)
+            if let path = item.backdropPath ?? item.posterPath, let url = TMDBClient.backdropURL(path) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    } else {
+                        ArtView(hue: item.artHue, cornerRadius: 0)
+                    }
+                }
+            } else {
+                ArtView(hue: item.artHue, cornerRadius: 0)
+            }
             LinearGradient(
                 colors: [Color.clear, Theme.background],
                 startPoint: .center,
@@ -110,19 +136,42 @@ private struct DetailContent: View {
 
     private func actions(_ decision: PlaybackDecision) -> some View {
         HStack(spacing: Metrics.s(10)) {
-            Button {
-                app.play(item)
-            } label: {
-                Label(
-                    item.canResume ? "Resume · \(TimeFormat.clock(item.progressSeconds))" : "Play",
-                    systemImage: "play.fill"
-                )
-                .foregroundStyle(Theme.onAccent)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(!decision.isPlayable)
+            if needsStream {
+                Button {
+                    showingStreams = true
+                } label: {
+                    Label(
+                        item.canResume ? "Resume · \(TimeFormat.clock(item.progressSeconds))" : "Find Streams",
+                        systemImage: "play.fill"
+                    )
+                    .foregroundStyle(Theme.onAccent)
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button {
+                    app.play(item)
+                } label: {
+                    Label(
+                        item.canResume ? "Resume · \(TimeFormat.clock(item.progressSeconds))" : "Play",
+                        systemImage: "play.fill"
+                    )
+                    .foregroundStyle(Theme.onAccent)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(!decision.isPlayable)
 
-            if item.canResume {
+                if movieRequest != nil {
+                    Button {
+                        showingStreams = true
+                    } label: {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Find other streams")
+                }
+            }
+
+            if item.canResume && !needsStream {
                 Button {
                     app.startOver(item.id)
                 } label: {

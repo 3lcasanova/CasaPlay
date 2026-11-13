@@ -168,6 +168,15 @@ final class AppState {
         playing = items.first { $0.id == item.id } ?? item
     }
 
+    /// Plays a chosen stream as a library title so progress is saved to it. The URL is never persisted.
+    func play(libraryItemID id: MediaItem.ID, streamURL: URL, headers: [String: String]?) -> Bool {
+        guard var copy = item(id: id) else { return false }
+        copy.streamURL = streamURL
+        copy.streamHeaders = headers
+        playing = copy
+        return true
+    }
+
     func startOver(_ id: MediaItem.ID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].progressSeconds = 0

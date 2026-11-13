@@ -7,6 +7,7 @@ import CasaPlayKit
 
 struct StreamSourcesView: View {
     let request: ContentRequest
+    var libraryItemID: UUID? = nil
     @Environment(ExtensionCenter.self) private var center
     @Environment(AppState.self) private var app
     @Environment(TorrentCenter.self) private var torrents
@@ -238,6 +239,12 @@ struct StreamSourcesView: View {
         switch candidate.location {
         case .http(let url, let headers):
             // Direct HTTP/HLS stream — hand off to AVFoundation player.
+            let streamHeaders = headers.isEmpty ? nil : headers
+            if let libraryItemID,
+               app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders) {
+                dismiss()
+                return
+            }
             let ext = url.pathExtension.lowercased()
             let container: MediaContainer = ext == "m3u8" ? .hls : (ext == "mp4" ? .mp4 : .other)
             let item = MediaItem(
