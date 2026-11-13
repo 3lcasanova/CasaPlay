@@ -44,12 +44,23 @@ struct TorrentsView: View {
                             .focusableOnTV()
                     }
 
-                    ForEach(center.summaries) { summary in
-                        NavigationLink(value: summary.infoHash) {
-                            TorrentRow(summary: summary)
+                    VStack(spacing: Metrics.s(14)) {
+                        ForEach(center.summaries) { summary in
+                            NavigationLink {
+                                TorrentDetailView(hash: summary.infoHash)
+                            } label: {
+                                TorrentRow(summary: summary)
+                            }
+                            #if os(tvOS)
+                            .buttonStyle(.bordered)
+                            #else
+                            .buttonStyle(.plain)
+                            #endif
                         }
-                        .posterButtonStyle()
                     }
+                    #if os(tvOS)
+                    .focusSection()
+                    #endif
 
                     Text("Cache: \(ByteCountFormatter.string(fromByteCount: center.usedBytes, countStyle: .file)) of \(ByteCountFormatter.string(fromByteCount: center.settings.storageLimit, countStyle: .file))")
                         .font(.casa(12))
@@ -62,9 +73,6 @@ struct TorrentsView: View {
             }
             .screenBackground()
             .scrollingScreenTitle("Torrents")
-            .navigationDestination(for: InfoHash.self) { hash in
-                TorrentDetailView(hash: hash)
-            }
         }
     }
 }

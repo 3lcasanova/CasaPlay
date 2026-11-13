@@ -151,16 +151,23 @@ struct BackdropImage: View {
     let hue: Double
 
     var body: some View {
-        if let path, let url = TMDBClient.backdropURL(path) {
-            AsyncImage(url: url) { phase in
-                if let image = phase.image {
-                    image.resizable().aspectRatio(contentMode: .fill)
+        GeometryReader { geometry in
+            let size = geometry.size
+            Group {
+                if let path, let url = TMDBClient.backdropURL(path) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            ArtView(hue: hue, cornerRadius: 0)
+                        }
+                    }
                 } else {
                     ArtView(hue: hue, cornerRadius: 0)
                 }
             }
-        } else {
-            ArtView(hue: hue, cornerRadius: 0)
+            .frame(width: size.width, height: size.height)
+            .clipped()
         }
     }
 }

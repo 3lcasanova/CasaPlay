@@ -100,7 +100,7 @@ public struct TMDBClient {
     public func toMediaItem(_ detail: TMDBMovieDetail) -> MediaItem {
         let imdbID = detail.external_ids?.imdb_id
         let cast = (detail.credits?.cast ?? []).prefix(10).map {
-            CastMember(name: $0.name, role: $0.character)
+            CastMember(name: $0.name, role: $0.character, profilePath: $0.profilePath)
         }
         var item = MediaItem(
             title: detail.title,
@@ -123,7 +123,7 @@ public struct TMDBClient {
     public func toMediaItem(_ detail: TMDBShowDetail) -> MediaItem {
         let imdbID = detail.external_ids?.imdb_id
         let cast = (detail.credits?.cast ?? []).prefix(10).map {
-            CastMember(name: $0.name, role: $0.character)
+            CastMember(name: $0.name, role: $0.character, profilePath: $0.profilePath)
         }
         var item = MediaItem(
             title: detail.name,
@@ -294,4 +294,10 @@ public struct TMDBCredits: Decodable, Sendable {
 public struct TMDBCastMember: Decodable, Sendable {
     public let name: String
     public let character: String
+    public let profilePath: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case name, character
+        case profilePath = "profile_path"
+    }
 }

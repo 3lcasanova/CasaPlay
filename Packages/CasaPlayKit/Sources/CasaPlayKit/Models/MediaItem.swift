@@ -11,9 +11,12 @@ public struct CastMember: Codable, Hashable, Identifiable, Sendable {
     public var name: String
     public var role: String
 
-    public init(name: String, role: String) {
+    public var profilePath: String?
+
+    public init(name: String, role: String, profilePath: String? = nil) {
         self.name = name
         self.role = role
+        self.profilePath = profilePath
     }
 
     public var initials: String {

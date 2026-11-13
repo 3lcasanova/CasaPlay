@@ -248,7 +248,7 @@ final class StreamParsingTests: XCTestCase {
         let json = """
         {"streams":[
           {"name":"Example\\n4K","title":"Film.2019.2160p.HDR.HEVC","url":"https://cdn.example.com/a.mp4","behaviorHints":{"filename":"Film.2019.2160p.mp4","videoSize":12000000000,"proxyHeaders":{"request":{"Referer":"https://example.com","Host":"evil","User-Agent":"X"}}}},
-          {"infoHash":"dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c","fileIdx":2,"sources":["tracker:udp://t.example.org:1337/announce","dht:x"],"title":"1080p"},
+          {"infoHash":"dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c","fileIdx":2,"sources":["tracker:https://t.example.org/announce","dht:x"],"title":"1080p"},
           {"ytId":"abc"},
           {"externalUrl":"https://example.com/watch"},
           {"url":"http://cdn.example.com/plain.mp4"},
@@ -264,7 +264,12 @@ final class StreamParsingTests: XCTestCase {
         guard case .torrent(let hash, let idx, let trackers) = locations[1] else { return XCTFail() }
         XCTAssertEqual(hash.hex, "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c")
         XCTAssertEqual(idx, 2)
-        XCTAssertEqual(trackers.map(\.absoluteString), ["udp://t.example.org:1337/announce"])
+        XCTAssertEqual(trackers.map(\.absoluteString), ["https://t.example.org/announce"])
+        var noTracker = streams[1]
+        noTracker.sources = []
+        guard case .unsupported = StremioStreamProvider.location(noTracker) else {
+            return XCTFail("A torrent without trackers should be marked unsupported")
+        }
         for i in [2, 4] { guard case .unsupported = locations[i] else { return XCTFail("\(i)") } }
         guard case .external(let link) = locations[3] else { return XCTFail("an https externalUrl is a where-to-watch link") }
         XCTAssertEqual(link.absoluteString, "https://example.com/watch")
@@ -388,7 +393,7 @@ final class AggregatorTests: XCTestCase {
         XCTAssertTrue(final.ranked.isEmpty)
         XCTAssertEqual(final.rejected.count, 2)
         XCTAssertEqual(final.outcomes.first?.rejected, 2)
-        XCTAssertEqual(final.emptyMessage, "2 results were found, but they are all for a different title, year or episode, not this film. None of your sources has it.")
+        XCTAssertEqual(final.emptyMessage, "No results matched this movie.")
     }
 
     func testExternalLinksBecomeWhereToWatchNotStreams() async {

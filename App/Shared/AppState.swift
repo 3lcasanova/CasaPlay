@@ -128,8 +128,12 @@ final class AppState {
     }
 
     private func adopt(_ item: MediaItem) -> MediaItem.ID {
-        if let existing = items.first(where: { $0.historyKey == item.historyKey }) {
-            return existing.id
+        if let index = items.firstIndex(where: { $0.historyKey == item.historyKey }) {
+            if !item.cast.isEmpty, items[index].cast != item.cast {
+                items[index].cast = item.cast
+                LibraryStore.save(items)
+            }
+            return items[index].id
         }
         var fresh = [item]
         WatchHistory.apply(watchMap, to: &fresh)
@@ -281,21 +285,7 @@ final class AppState {
     // MARK: Subtitles
 
     func subtitleOptions(for id: MediaItem.ID) -> [LoadedSubtitle] {
-        var options = subtitleLibrary[id] ?? []
-        #if DEBUG
-        // Lets the overlay be tried on the test stream before real sources exist.
-        if options.isEmpty {
-            let demo = SubtitleTrack(
-                id: "demo-en",
-                languageCode: "en",
-                displayName: "English (demo)",
-                origin: .sidecar,
-                format: .srt
-            )
-            options.append(LoadedSubtitle(track: demo, cues: SRTParser.parse(SampleData.demoSubtitleSRT)))
-        }
-        #endif
-        return options
+        subtitleLibrary[id] ?? []
     }
 
     /// The track to draw, following the viewer's choice or the profile's languages.

@@ -46,11 +46,34 @@ struct TorrentStreamProvider: StreamProvider {
         }
 
         return results.compactMap { candidate in
-            torrentCandidate(from: candidate)
+            guard matches(candidate, request: request) else { return nil }
+            return torrentCandidate(from: candidate)
         }
     }
 
     // MARK: - Helpers
+
+    private func matches(_ candidate: TorrentCandidate, request: ContentRequest) -> Bool {
+        let parsed = FilenameParser.parse(candidate.title)
+        let title = normalizedTitle(request.title)
+        let sameTitle = !title.isEmpty && normalizedTitle(parsed.title) == title
+        let sameIMDbID = parsed.imdbID == request.id.lowercased()
+
+        switch request.kind {
+        case .movie:
+            guard !parsed.isEpisode else { return false }
+            if parsed.imdbID != nil { return sameIMDbID }
+            return sameTitle && (request.year == nil || parsed.year == request.year)
+        case .episode:
+            guard let season = request.season, let episode = request.episode else { return false }
+            return (sameTitle || sameIMDbID) && parsed.season == season && parsed.episode == episode
+        }
+    }
+
+    private func normalizedTitle(_ title: String) -> [Substring] {
+        title.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .split { !$0.isLetter && !$0.isNumber }
+    }
 
     private func searchQuery(for request: ContentRequest) -> String {
         switch request.kind {

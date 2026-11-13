@@ -19,6 +19,7 @@ public struct ExtensionState: Codable, Equatable, Sendable {
 }
 
 public actor ExtensionManager {
+    private static let persistentStateKey = "CasaPlay.extensionState.v1"
     private let file: URL
     private let transport: HTTPTransport
     private let secrets: SecretStore
@@ -28,7 +29,20 @@ public actor ExtensionManager {
         self.file = file
         self.transport = transport
         self.secrets = secrets
-        self.state = Self.load(file)
+        let saved = Self.load(file)
+        #if os(tvOS)
+        if let data = UserDefaults.standard.data(forKey: Self.persistentStateKey),
+           let persisted = try? JSONDecoder().decode(ExtensionState.self, from: data) {
+            self.state = persisted
+        } else {
+            self.state = saved
+            if let data = try? JSONEncoder().encode(saved) {
+                UserDefaults.standard.set(data, forKey: Self.persistentStateKey)
+            }
+        }
+        #else
+        self.state = saved
+        #endif
     }
 
     /// Reads saved state. Unknown future fields are ignored; a damaged file is kept aside, not overwritten.
@@ -45,6 +59,9 @@ public actor ExtensionManager {
 
     private func save() {
         guard let data = try? JSONEncoder().encode(state) else { return }
+        #if os(tvOS)
+        UserDefaults.standard.set(data, forKey: Self.persistentStateKey)
+        #else
         try? FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
         let temp = file.deletingLastPathComponent().appendingPathComponent(".extensions.tmp")
         do {
@@ -55,6 +72,7 @@ public actor ExtensionManager {
                 try FileManager.default.moveItem(at: temp, to: file)
             }
         } catch {}
+        #endif
     }
 
     // MARK: Repositories

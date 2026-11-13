@@ -32,6 +32,7 @@ public actor TorrentSession: PeerHost {
     private var store: PieceStore?
     private var picker: PiecePicker?
     private var selectedFile: Int?
+    private var metadataSearchStartedAt: ContinuousClock.Instant?
     private var paused = false
     /// Why the engine paused the torrent by itself (storage full, cache limit). Nil when the
     /// user paused it. Readers are given this instead of a bare "paused".
@@ -102,6 +103,7 @@ public actor TorrentSession: PeerHost {
         pauseReason = nil
         lastError = nil
         if currentMetainfo == nil {
+            metadataSearchStartedAt = .now
             startPeerDiscovery()
             workers.append(Task { await self.fetchMetadataFromExactSources() })
         } else {
@@ -492,7 +494,7 @@ public actor TorrentSession: PeerHost {
     private func startPeerDiscovery() {
         guard !paused, !stopped, peerFactory != nil else { return }
         let trackers = Array(Set((currentMetainfo?.trackers ?? []) + (magnet?.trackers ?? [])))
-        for tracker in trackers where ["http", "https"].contains(tracker.scheme?.lowercased() ?? "") {
+        for tracker in trackers where ["http", "https", "udp"].contains(tracker.scheme?.lowercased() ?? "") {
             workers.append(Task { await self.trackerLoop(tracker) })
         }
     }
@@ -509,7 +511,13 @@ public actor TorrentSession: PeerHost {
                 uploaded: uploaded, downloaded: downloaded, left: max(left, 0), event: event
             )
             var wait = 300
-            if let response = try? await client.announce(announce) {
+            let response: TrackerResponse?
+            if url.scheme?.lowercased() == "udp" {
+                response = try? await UDPTrackerClient(url: url).announce(announce)
+            } else {
+                response = try? await client.announce(announce)
+            }
+            if let response {
                 event = nil
                 wait = response.interval
                 knownPeers.formUnion(response.peers)
@@ -583,7 +591,15 @@ public actor TorrentSession: PeerHost {
         }
         if stopped { s.state = .failed("Cancelled") }
         else if paused { s.state = .paused }
-        else if currentMetainfo == nil { s.state = .fetchingMetadata }
+        else if currentMetainfo == nil {
+            if let started = metadataSearchStartedAt, started.duration(to: .now) >= .seconds(60) {
+                let message = lastError ?? "Still waiting for torrent details. Try importing the .torrent file."
+                s.lastError = message
+                s.state = .failed(message)
+            } else {
+                s.state = .fetchingMetadata
+            }
+        }
         else if s.progress >= 1, selectedFile != nil { s.state = .completed }
         else if selectedFile == nil { s.state = .ready }
         else { s.state = .downloading }

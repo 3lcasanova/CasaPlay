@@ -29,6 +29,8 @@ private struct DetailContent: View {
         return .movie(id: imdb, title: item.title, year: item.year)
     }
 
+    private var needsEpisode: Bool { item.tmdbShowID != nil && item.streamURL == nil }
+
     private var needsStream: Bool {
         movieRequest != nil && item.streamURL == nil && item.sourceName.isEmpty
     }
@@ -49,7 +51,7 @@ private struct DetailContent: View {
                         .focusableOnTV()
                 }
 
-                if !needsStream {
+                if !needsStream && !needsEpisode {
                     playbackPanel(decision)
                 }
 
@@ -89,17 +91,7 @@ private struct DetailContent: View {
 
     private var header: some View {
         ZStack(alignment: .bottomLeading) {
-            if let path = item.backdropPath ?? item.posterPath, let url = TMDBClient.backdropURL(path) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        ArtView(hue: item.artHue, cornerRadius: 0)
-                    }
-                }
-            } else {
-                ArtView(hue: item.artHue, cornerRadius: 0)
-            }
+            BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue)
             LinearGradient(
                 colors: [Color.clear, Theme.background],
                 startPoint: .center,
@@ -122,7 +114,7 @@ private struct DetailContent: View {
                         .font(.casa(13))
                         .foregroundStyle(Theme.textSecondary)
                 }
-                if !needsStream {
+                if !needsStream && !needsEpisode {
                     HStack(spacing: Metrics.s(6)) {
                         ForEach(item.file.badges, id: \.self) { badge in
                             Pill(text: badge)
@@ -140,7 +132,14 @@ private struct DetailContent: View {
 
     private func actions(_ decision: PlaybackDecision) -> some View {
         HStack(spacing: Metrics.s(10)) {
-            if needsStream {
+            if needsEpisode {
+                Button {
+                    showingEpisodes = true
+                } label: {
+                    Label("Episodes", systemImage: "list.bullet")
+                }
+                .buttonStyle(.borderedProminent)
+            } else if needsStream {
                 Button {
                     showingStreams = true
                 } label: {
@@ -175,7 +174,7 @@ private struct DetailContent: View {
                 }
             }
 
-            if item.canResume && !needsStream {
+            if item.canResume && !needsStream && !needsEpisode {
                 Button {
                     app.startOver(item.id)
                 } label: {
@@ -202,7 +201,7 @@ private struct DetailContent: View {
             .buttonStyle(.bordered)
             .accessibilityLabel(item.isWatched ? "Mark as unwatched" : "Mark as watched")
 
-            if item.tmdbShowID != nil {
+            if item.tmdbShowID != nil && !needsEpisode {
                 Button {
                     showingEpisodes = true
                 } label: {
@@ -337,21 +336,33 @@ private struct DetailContent: View {
         Shelf(title: "Cast") {
             ForEach(Array(item.cast.enumerated()), id: \.element.id) { index, member in
                 VStack(spacing: Metrics.s(6)) {
-                    AvatarView(
-                        text: member.initials,
-                        hue: (item.artHue + Double(index) * 37).truncatingRemainder(dividingBy: 360),
-                        size: Metrics.s(56)
-                    )
+                    let size = Metrics.s(64)
+                    AsyncImage(url: member.profilePath.flatMap(TMDBClient.posterURL)) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            AvatarView(
+                                text: member.initials,
+                                hue: (item.artHue + Double(index) * 37).truncatingRemainder(dividingBy: 360),
+                                size: size
+                            )
+                        }
+                    }
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+                    .accessibilityHidden(true)
                     Text(member.name)
                         .font(.casa(12, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(member.role)
                         .font(.casa(11))
                         .foregroundStyle(Theme.textSecondary)
-                        .lineLimit(1)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .frame(width: Metrics.s(84))
+                .frame(width: Metrics.s(100))
                 .focusableOnTV()
             }
         }
