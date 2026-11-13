@@ -46,7 +46,7 @@ struct EpisodesView: View {
             .safeAreaInset(edge: .top) { seasonPicker }
         }
         .sheet(item: $streamingEpisode) { target in
-            StreamSourcesView(request: target.request, title: target.title)
+            StreamSourcesView(request: target.request)
         }
         .task(id: selectedSeason) { await loadSeason() }
     }
@@ -107,13 +107,12 @@ struct EpisodesView: View {
 
     private func streamEpisode(_ ep: TMDBEpisode) {
         guard let seriesID = show.imdbID else { return }
-        let request = ContentRequest(
-            kind: .episode,
-            id: seriesID,
+        let request = ContentRequest.episode(
+            seriesID: seriesID,
             title: show.title,
-            year: show.year,
             season: ep.season_number,
-            episode: ep.episode_number
+            episode: ep.episode_number,
+            year: show.year
         )
         streamingEpisode = EpisodeTarget(
             request: request,
