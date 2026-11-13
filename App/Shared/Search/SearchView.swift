@@ -38,8 +38,8 @@ struct SearchView: View {
                     searchContent
                 }
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Search")
+            .screenBackground()
+            .scrollingScreenTitle("Search")
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.large)
             #endif

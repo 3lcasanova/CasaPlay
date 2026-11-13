@@ -43,8 +43,8 @@ struct ExtensionsView: View {
                 // Content
                 tabContent
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Extensions")
+            .screenBackground()
+            .scrollingScreenTitle("Extensions")
             #if !os(tvOS)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -112,7 +112,6 @@ private struct RepositoriesTab: View {
                 .padding(Metrics.s(14))
         }
         .buttonStyle(.bordered)
-        .focusableOnTV()
     }
 
     private func addRepo() async {
@@ -176,7 +175,6 @@ private struct RepositoryRow: View {
         }
         .padding(Metrics.s(14))
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
-        .focusableOnTV()
         .confirmationDialog("Remove repository?", isPresented: $showRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { await center.removeRepository(repo.url) } }
             Button("Cancel", role: .cancel) {}
@@ -191,6 +189,7 @@ private struct AddonsTab: View {
     @State private var adding = false
     @State private var urlText = ""
     @State private var selectedAddon: InstalledExtension?
+    @State private var error: String?
 
     var body: some View {
         ScrollView {
@@ -199,8 +198,10 @@ private struct AddonsTab: View {
                     emptyState
                 }
                 ForEach(center.state.installed) { addon in
-                    AddonRow(addon: addon)
+                    AddonRow(addon: addon) { selectedAddon = addon }
+                        #if !os(tvOS)
                         .onTapGesture { selectedAddon = addon }
+                        #endif
                 }
                 // Entries from repositories that can be installed
                 let installable = center.state.repositories.flatMap(\.entries).filter { $0.compatibility.isUsable && $0.manifestURL != nil }
@@ -235,6 +236,9 @@ private struct AddonsTab: View {
                 Text("Paste the manifest URL (ending in /manifest.json).")
             }
         }
+        .alert("Couldn't install add-on", isPresented: .constant(error != nil), actions: {
+            Button("OK") { error = nil }
+        }, message: { Text(error ?? "") })
     }
 
     private var emptyState: some View {
@@ -265,19 +269,33 @@ private struct AddonsTab: View {
                 .padding(Metrics.s(14))
         }
         .buttonStyle(.bordered)
-        .focusableOnTV()
     }
 
     private func installFromURL() async {
-        let url = urlText.trimmingCharacters(in: .whitespaces)
-        guard !url.isEmpty, let parsed = URL(string: url) else { return }
-        try? await center.install(manifestURL: parsed)
+        var url = urlText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+        // Add-on pages often hand out stremio:// links; the manifest itself is served over https.
+        if url.lowercased().hasPrefix("stremio://") { url = "https://" + url.dropFirst("stremio://".count) }
+        guard let parsed = URL(string: url), let scheme = parsed.scheme?.lowercased(),
+              scheme == "https" || scheme == "http", parsed.host != nil else {
+            error = "That isn't a web address. Enter the add-on's manifest URL, starting with https:// and ending in /manifest.json."
+            return
+        }
+        do {
+            try await center.install(manifestURL: parsed)
+        } catch {
+            // Without this the alert had already closed and a failed install showed nothing.
+            self.error = center.installError ?? error.localizedDescription
+        }
     }
 }
 
 private struct AddonRow: View {
     @Environment(ExtensionCenter.self) private var center
     let addon: InstalledExtension
+    /// Opens the add-on's details. On Apple TV this is the first item of the row's menu,
+    /// because a row can't be both selectable and contain its own menu there.
+    var onDetails: () -> Void = {}
     @State private var showRemove = false
 
     var body: some View {
@@ -321,6 +339,9 @@ private struct AddonRow: View {
             Spacer(minLength: 0)
 
             Menu {
+                Button(action: onDetails) {
+                    Label("Details", systemImage: "info.circle")
+                }
                 Toggle("Enabled", isOn: Binding(get: { addon.isEnabled }, set: { v in Task { await center.setEnabled(addon.id, v) } }))
                 Menu("Role") {
                     ForEach([ProviderRole.primary, .backup], id: \.self) { r in
@@ -354,7 +375,6 @@ private struct AddonRow: View {
         }
         .padding(Metrics.s(14))
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
-        .focusableOnTV()
         .confirmationDialog("Remove \(addon.name)?", isPresented: $showRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { await center.remove(addon.id) } }
             Button("Cancel", role: .cancel) {}
@@ -397,7 +417,6 @@ private struct RepositoryEntryRow: View {
         }
         .padding(Metrics.s(12))
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
-        .focusableOnTV()
     }
 }
 
@@ -464,8 +483,8 @@ private struct AddonDetailSheet: View {
                 }
                 .padding(Metrics.screenPadding)
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Add-on Details")
+            .screenBackground()
+            .scrollingScreenTitle("Add-on Details")
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -489,7 +508,7 @@ private struct ProvidersTab: View {
                 // Quality mode picker
                 SectionHeader("Stream Quality")
                 VStack(spacing: Metrics.s(8)) {
-                    ForEach([QualityMode.preferUHD, .uhdOnly, .allowFHDFallback], id: \.label) { mode in
+                    ForEach(QualityMode.menuOrder, id: \.label) { mode in
                         QualityModeRow(mode: mode, selected: center.qualityMode == mode) {
                             center.setQualityMode(mode)
                         }
@@ -549,7 +568,6 @@ private struct QualityModeRow: View {
                         in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .focusableOnTV()
     }
 }
 
@@ -675,9 +693,12 @@ private extension Compatibility {
 private extension QualityMode {
     var label: String {
         switch self {
-        case .preferUHD: return "Prefer 4K"
+        case .preferUHD: return "All resolutions"
         case .uhdOnly: return "4K only"
-        case .allowFHDFallback: return "Allow 1080p fallback"
+        case .allowFHDFallback: return "4K and 1080p"
+        case .fhdOnly: return "1080p only"
+        case .hd720Only: return "720p only"
+        case .sdOnly: return "SD only"
         }
     }
     var explanation: String {
@@ -685,6 +706,9 @@ private extension QualityMode {
         case .preferUHD: return "Show all streams. Verified 4K appears first."
         case .uhdOnly: return "Only verified 4K streams are shown. Tells you plainly when none qualify."
         case .allowFHDFallback: return "Show verified 4K and 1080p. Sub-1080p streams are hidden."
+        case .fhdOnly: return "Show only 1080p streams. 4K and lower resolutions are hidden."
+        case .hd720Only: return "Show only 720p streams. Uses less data."
+        case .sdOnly: return "Show only standard-definition streams, below 720p. Uses the least data."
         }
     }
 }

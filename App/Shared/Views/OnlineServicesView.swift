@@ -18,6 +18,7 @@ struct OnlineServicesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
+                ScreenTitle("Online services")
                 ServiceSection(
                     title: "TMDB (search)",
                     detail: "Powers the Search tab — movie and TV show discovery with posters and metadata. Get a free read access token at themoviedb.org under Settings → API."
@@ -81,8 +82,8 @@ struct OnlineServicesView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Online services")
+        .screenBackground()
+        .scrollingScreenTitle("Online services")
     }
 
     private func signIn() async {

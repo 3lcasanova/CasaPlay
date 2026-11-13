@@ -57,10 +57,11 @@ struct TorrentsView: View {
                         .padding(.top, Metrics.s(6))
                         .focusableOnTV()
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(Metrics.screenPadding)
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Torrents")
+            .screenBackground()
+            .scrollingScreenTitle("Torrents")
             .navigationDestination(for: InfoHash.self) { hash in
                 TorrentDetailView(hash: hash)
             }
@@ -188,8 +189,8 @@ struct AddTorrentView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Add torrent")
+        .screenBackground()
+        .scrollingScreenTitle("Add torrent")
         .navigationDestination(item: $added) { hash in
             TorrentDetailView(hash: hash)
         }
@@ -257,8 +258,8 @@ struct TorrentSourcesView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Sources")
+        .screenBackground()
+        .scrollingScreenTitle("Sources")
     }
 }
 
@@ -314,8 +315,8 @@ struct TorrentBrowseView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle(provider.name)
+        .screenBackground()
+        .scrollingScreenTitle(provider.name)
         .navigationDestination(item: $added) { hash in
             TorrentDetailView(hash: hash)
         }
@@ -430,8 +431,8 @@ struct TorrentDetailView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Torrent")
+        .screenBackground()
+        .scrollingScreenTitle("Torrent")
         .task(id: hash) {
             // Wait for the file list (magnet links need peers or sources first).
             while files.isEmpty, !Task.isCancelled {

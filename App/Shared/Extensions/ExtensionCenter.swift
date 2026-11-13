@@ -30,11 +30,45 @@ final class ExtensionCenter {
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CasaPlay/extensions.json")
         manager = ExtensionManager(file: file, secrets: KeychainSecretStore())
-        Task { await reload() }
+        Task {
+            await reload()
+            await installStarterAddons()
+        }
         // Persist quality mode across launches.
         if let raw = UserDefaults.standard.string(forKey: "qualityMode"),
            let mode = QualityMode(rawValue: raw) {
             qualityMode = mode
+        }
+    }
+
+    // MARK: - Starter add-ons
+
+    /// Add-ons that come installed. Each is installed once; removing one in the app keeps it removed.
+    /// - WatchHub: Stremio's own add-on listing the legal services (Netflix, Prime Video,
+    ///   Apple TV and others) a title can be watched on.
+    /// - Public Domain Movies: torrents for about 500 films that are in the public domain.
+    /// - OpenSubtitles v3: Stremio's subtitles add-on.
+    private static let starterAddons: [(id: String, manifest: String, role: ProviderRole)] = [
+        ("org.stremio.pubdomainmovies", "https://caching.stremio.net/publicdomainmovies.now.sh/manifest.json", .primary),
+        ("org.stremio.watchhub", "https://watchhub.strem.io/manifest.json", .backup),
+        ("org.stremio.opensubtitlesv3", "https://opensubtitles-v3.strem.io/manifest.json", .backup),
+    ]
+
+    private func installStarterAddons() async {
+        let defaults = UserDefaults.standard
+        for addon in Self.starterAddons {
+            let doneKey = "starterAddon.installed." + addon.id
+            guard !defaults.bool(forKey: doneKey) else { continue }
+            if state.installed.contains(where: { $0.manifest.id == addon.id }) {
+                defaults.set(true, forKey: doneKey)
+                continue
+            }
+            guard let url = URL(string: addon.manifest) else { continue }
+            // A failure (no network at first launch) is left unmarked so the next launch tries again.
+            if (try? await manager.install(manifestURL: url, role: addon.role)) != nil {
+                defaults.set(true, forKey: doneKey)
+                await reload()
+            }
         }
     }
 
@@ -176,6 +210,9 @@ private extension QualityMode {
         case .preferUHD: return "preferUHD"
         case .uhdOnly: return "uhdOnly"
         case .allowFHDFallback: return "allowFHDFallback"
+        case .fhdOnly: return "fhdOnly"
+        case .hd720Only: return "hd720Only"
+        case .sdOnly: return "sdOnly"
         }
     }
     init?(rawValue: String) {
@@ -183,6 +220,9 @@ private extension QualityMode {
         case "preferUHD": self = .preferUHD
         case "uhdOnly": self = .uhdOnly
         case "allowFHDFallback": self = .allowFHDFallback
+        case "fhdOnly": self = .fhdOnly
+        case "hd720Only": self = .hd720Only
+        case "sdOnly": self = .sdOnly
         default: return nil
         }
     }

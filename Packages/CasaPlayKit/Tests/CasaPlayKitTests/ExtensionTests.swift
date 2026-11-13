@@ -265,7 +265,9 @@ final class StreamParsingTests: XCTestCase {
         XCTAssertEqual(hash.hex, "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c")
         XCTAssertEqual(idx, 2)
         XCTAssertEqual(trackers.map(\.absoluteString), ["udp://t.example.org:1337/announce"])
-        for i in 2...4 { guard case .unsupported = locations[i] else { return XCTFail("\(i)") } }
+        for i in [2, 4] { guard case .unsupported = locations[i] else { return XCTFail("\(i)") } }
+        guard case .external(let link) = locations[3] else { return XCTFail("an https externalUrl is a where-to-watch link") }
+        XCTAssertEqual(link.absoluteString, "https://example.com/watch")
         guard case .http = locations[5] else { return XCTFail("home-network HTTP is allowed") }
         let q = AdvertisedQuality.parse(streams[0].label + " " + (streams[0].behaviorHints?.filename ?? ""), size: streams[0].behaviorHints?.videoSize)
         XCTAssertEqual(q.resolution, .uhd2160)
@@ -376,6 +378,45 @@ final class AggregatorTests: XCTestCase {
         XCTAssertEqual(final.hidden.count, 2)
         XCTAssertEqual(final.emptyMessage, "No verified 4K stream was found. 2 other streams (lower or unconfirmed resolution) are hidden by 4K only.")
         XCTAssertNil(final.bestChoice)
+    }
+
+    func testAllResultsForAnotherFilmAreExplainedNotJustEmpty() async {
+        var p = FakeProvider(providerID: "p", name: "P", role: .primary, priority: 0)
+        p.results = [p.candidate(0, url: "https://p/a.mp4", label: "1080p", filename: "Example.Film.1999.1080p.mkv"),
+                     p.candidate(1, url: "https://p/b.mp4", label: "1080p", filename: "Example.Film.1985.720p.mkv")]
+        let final = await collect(SourceAggregator(providers: [p], probe: nil).run(movie, mode: .preferUHD)).last!
+        XCTAssertTrue(final.ranked.isEmpty)
+        XCTAssertEqual(final.rejected.count, 2)
+        XCTAssertEqual(final.outcomes.first?.rejected, 2)
+        XCTAssertEqual(final.emptyMessage, "2 results were found, but they are all for a different title, year or episode, not this film. None of your sources has it.")
+    }
+
+    func testExternalLinksBecomeWhereToWatchNotStreams() async {
+        var p = FakeProvider(providerID: "hub", name: "WatchHub", role: .backup, priority: 0)
+        func link(_ n: Int, _ label: String, _ url: String) -> StreamCandidate {
+            var c = p.candidate(n, url: "https://unused/x.mp4", label: label)
+            c.location = .external(URL(string: url)!)
+            return c
+        }
+        p.results = [link(0, "Amazon Prime Video\nSubscription, Rent, Buy", "https://app.primevideo.com/detail?gti=1"),
+                     link(1, "Apple TV\nRent, Buy", "https://tv.apple.com/movie/1"),
+                     link(2, "Apple TV\nRent, Buy", "https://tv.apple.com/movie/1?alt")]   // same service and offer twice
+        let final = await collect(SourceAggregator(providers: [p], probe: nil).run(movie, mode: .preferUHD)).last!
+        XCTAssertTrue(final.ranked.isEmpty, "a link to another service is never offered as a stream")
+        XCTAssertTrue(final.rejected.isEmpty, "service names are not checked against the film title")
+        XCTAssertEqual(final.whereToWatch.compactMap { $0.externalService?.name }, ["Amazon Prime Video", "Apple TV"])
+        XCTAssertEqual(final.whereToWatch.first?.externalService?.detail, "Subscription, Rent, Buy")
+        XCTAssertEqual(final.hiddenStreamCount, 0)
+        XCTAssertEqual(final.emptyMessage, "No playable stream was found.")
+    }
+
+    func testExternalUrlMustBeHTTPS() {
+        func stream(_ json: String) -> StremioStream { try! JSONDecoder().decode(StremioStream.self, from: Data(json.utf8)) }
+        XCTAssertEqual(StremioStreamProvider.location(stream(#"{"name":"Netflix","externalUrl":"https://www.netflix.com/title/1"}"#)),
+                       .external(URL(string: "https://www.netflix.com/title/1")!))
+        if case .external = StremioStreamProvider.location(stream(#"{"name":"X","externalUrl":"someapp://open"}"#)) {
+            XCTFail("only https links are kept")
+        }
     }
 
     func testFallbackModeHidesSubFHDAndUnverifiedNeverCountsAs4K() async {

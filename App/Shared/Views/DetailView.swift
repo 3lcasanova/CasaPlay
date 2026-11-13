@@ -61,7 +61,7 @@ private struct DetailContent: View {
             }
             .padding(.bottom, Metrics.sectionSpacing)
         }
-        .background(Theme.background.ignoresSafeArea())
+        .screenBackground()
         #if !os(tvOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif

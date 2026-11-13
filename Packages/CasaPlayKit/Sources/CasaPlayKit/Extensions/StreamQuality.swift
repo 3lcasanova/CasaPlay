@@ -144,12 +144,35 @@ public enum QualityMode: String, Codable, CaseIterable, Sendable {
     case uhdOnly
     /// 2160p first, then 1080p; nothing below 1080p.
     case allowFHDFallback
+    /// Only 1080p streams.
+    case fhdOnly
+    /// Only 720p streams.
+    case hd720Only
+    /// Only standard-definition streams (below 720p).
+    case sdOnly
+
+    /// Order the choices are offered in, highest resolution first.
+    public static let menuOrder: [QualityMode] = [.preferUHD, .uhdOnly, .allowFHDFallback, .fhdOnly, .hd720Only, .sdOnly]
+
+    /// The single resolution a one-resolution mode shows, or nil for the mixed modes.
+    public var onlyResolution: ResolutionClass? {
+        switch self {
+        case .preferUHD, .allowFHDFallback: return nil
+        case .uhdOnly: return .uhd2160
+        case .fhdOnly: return .fhd1080
+        case .hd720Only: return .hd720
+        case .sdOnly: return .sd
+        }
+    }
 
     public var label: String {
         switch self {
-        case .preferUHD: return "Prefer 4K"
+        case .preferUHD: return "All resolutions, 4K first"
         case .uhdOnly: return "4K only"
-        case .allowFHDFallback: return "Allow 1080p fallback"
+        case .allowFHDFallback: return "4K and 1080p"
+        case .fhdOnly: return "1080p only"
+        case .hd720Only: return "720p only"
+        case .sdOnly: return "SD only"
         }
     }
 
@@ -158,6 +181,9 @@ public enum QualityMode: String, Codable, CaseIterable, Sendable {
         case .preferUHD: return "Verified 2160p streams first, then 1080p and anything else that plays."
         case .uhdOnly: return "Only streams CasaPlay has checked and confirmed as 2160p."
         case .allowFHDFallback: return "Verified 2160p first, then 1080p. Lower resolutions are hidden."
+        case .fhdOnly: return "Only 1080p streams. 4K and lower resolutions are hidden."
+        case .hd720Only: return "Only 720p streams. Uses less data than 1080p or 4K."
+        case .sdOnly: return "Only standard-definition streams, below 720p. Uses the least data."
         }
     }
 }
@@ -206,6 +232,9 @@ public enum QualityRanking {
         case .allowFHDFallback:
             if let v = state.verified { return v.resolution >= .fhd1080 }
             return advertised.resolution >= .fhd1080 || advertised.resolution == .unknown
+        case .fhdOnly, .hd720Only, .sdOnly:
+            // The checked resolution wins; an unchecked stream is judged by what it claims.
+            return (state.verified?.resolution ?? advertised.resolution) == mode.onlyResolution
         }
     }
 }

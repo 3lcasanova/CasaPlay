@@ -104,8 +104,8 @@ struct ProfileView: View {
                 }
                 .padding(.vertical, Metrics.s(16))
             }
-            .background(Theme.background.ignoresSafeArea())
-            .navigationTitle("Profile")
+            .screenBackground()
+            .scrollingScreenTitle("Profile")
             .sheet(isPresented: $showingAddProfile) {
                 AddProfileSheet { name, hue, isKids in
                     app.addProfile(name: name, hue: hue, isKids: isKids)
@@ -200,7 +200,7 @@ private struct AddProfileSheet: View {
                         .disabled(trimmedName.isEmpty)
                 }
             }
-            .navigationTitle("New Profile")
+            .scrollingScreenTitle("New Profile")
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

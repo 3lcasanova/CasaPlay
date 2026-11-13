@@ -13,6 +13,7 @@ struct SettingsView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
+                ScreenTitle("Subtitles & playback")
                 SubtitlePreview(style: app.subtitleStyle)
 
                 OptionRow(
@@ -63,8 +64,8 @@ struct SettingsView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Subtitles & playback")
+        .screenBackground()
+        .scrollingScreenTitle("Subtitles & playback")
     }
 }
 

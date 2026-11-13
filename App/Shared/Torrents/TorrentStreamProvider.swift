@@ -67,14 +67,10 @@ struct TorrentStreamProvider: StreamProvider {
         let location: StreamCandidate.Location
         if let magnet = tc.magnet, let (hash, trackers) = parseMagnet(magnet) {
             location = .torrent(hash, fileIndex: nil, trackers: trackers)
-        } else if let torrentURL = tc.torrentURL {
-            // .torrent file URL — engine fetches it; InfoHash unknown until download
-            // We store it as unsupported for now and let the engine handle it via add()
-            // The page URL is the .torrent file itself.
-            _ = torrentURL   // will be used in play() via TorrentCenter.add(_:)
-            // We need an InfoHash to construct a .torrent location; we don't have one yet.
-            // Return unsupported — the user sees it and can still trigger add via play().
-            location = .unsupported("Torrent file — tap to add")
+        } else if let torrentURL = tc.torrentURL, torrentURL.scheme?.lowercased() == "https" {
+            // The info hash isn't known until the .torrent file is downloaded, which
+            // happens when the user picks this stream.
+            location = .torrentFile(torrentURL)
         } else {
             return nil
         }

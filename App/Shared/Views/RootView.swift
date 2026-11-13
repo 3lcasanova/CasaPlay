@@ -76,7 +76,7 @@ struct RootView: View {
                 Label(section.title, systemImage: section.systemImage)
                     .tag(section)
             }
-            .navigationTitle("CasaPlay")
+            .scrollingScreenTitle("CasaPlay")
         } detail: {
             sectionView(app.selectedSection)
         }

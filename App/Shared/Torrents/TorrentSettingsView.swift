@@ -17,6 +17,7 @@ struct TorrentSettingsView: View {
 
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
+                ScreenTitle("Torrent settings")
                 SettingsGroup(title: "Privacy") {
                     Text("""
                     • Trackers and every peer you connect to see your device's public IP address and which torrent you are on. Use torrents you are allowed to share.
@@ -108,8 +109,8 @@ struct TorrentSettingsView: View {
             }
             .padding(Metrics.screenPadding)
         }
-        .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Torrent settings")
+        .screenBackground()
+        .scrollingScreenTitle("Torrent settings")
         .onChange(of: center.settings) { _, _ in center.saveSettings() }
         .confirmationDialog("Delete all torrents and their data?", isPresented: $confirmingClear) {
             Button("Delete everything", role: .destructive) { Task { await center.clearCache() } }

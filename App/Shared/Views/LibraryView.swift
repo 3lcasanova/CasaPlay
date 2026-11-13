@@ -136,7 +136,7 @@ struct LibraryView: View {
                 }
                 .padding(.bottom, Metrics.sectionSpacing)
             }
-            .background(Theme.background.ignoresSafeArea())
+            .screenBackground()
             .overlay {
                 if isOpening {
                     ProgressView().tint(Theme.accent)
@@ -145,7 +145,7 @@ struct LibraryView: View {
             .task(id: app.tmdbClient == nil) {
                 await app.discover.loadIfNeeded(app.tmdbClient)
             }
-            .navigationTitle(mode == .all ? "Movies" : "Favorites")
+            .scrollingScreenTitle(mode == .all ? "Movies" : "Favorites")
             .searchable(text: $query)
             .navigationDestination(for: UUID.self) { id in
                 DetailView(itemID: id)
