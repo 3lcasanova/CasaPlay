@@ -37,6 +37,10 @@ public struct StorageBudget: Sendable {
             #if os(Linux)
             let attrs = try? FileManager.default.attributesOfFileSystem(forPath: url.path)
             return (attrs?[.systemFreeSize] as? NSNumber)?.int64Value
+            #elseif os(tvOS)
+            // tvOS has no "important usage" figure; use plain available capacity.
+            let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityKey])
+            return values?.volumeAvailableCapacity.map(Int64.init)
             #else
             let values = try? url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
             return values?.volumeAvailableCapacityForImportantUsage
