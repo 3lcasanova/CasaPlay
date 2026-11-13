@@ -260,7 +260,7 @@ struct SearchView: View {
             navPath.append(existing.id)
             return
         }
-        app.items.append(item)
+        app.addToLibrary(item)
         navPath.append(item.id)
     }
 }

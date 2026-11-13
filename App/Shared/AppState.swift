@@ -77,23 +77,14 @@ enum ServiceKeys {
 /// One shared, in-memory store for the whole app.
 @Observable
 final class AppState {
-    var items: [MediaItem] = {
-        var base = SampleData.movies
-        let history = WatchHistory.load()
-        WatchHistory.apply(history, to: &base)
-        return base
-    }()
-    private var watchMap: [UUID: WatchRecord] = WatchHistory.load()
+    var items: [MediaItem]
+    private var watchMap: [String: WatchRecord]
 
-    var profiles: [Profile] = {
-        let url = ProfileStore.storeURL
-        if let data = try? Data(contentsOf: url),
-           let saved = try? JSONDecoder().decode([Profile].self, from: data),
-           !saved.isEmpty { return saved }
-        return SampleData.profiles
-    }()
+    var profiles: [Profile]
     var sources: [MediaSource] = SampleData.sources
-    var activeProfileID: UUID = SampleData.profiles[0].id
+    var activeProfileID: UUID {
+        didSet { ProfileStore.saveActiveID(activeProfileID) }
+    }
     var subtitleStyle = SubtitleStyle.default
     var selectedSection: AppSection = .home
     var playing: MediaItem?
@@ -106,6 +97,27 @@ final class AppState {
     /// The viewer's choice per title: a track ID, or `Self.subtitlesOff`. No entry means automatic.
     var subtitleChoice: [MediaItem.ID: String] = [:]
     static let subtitlesOff = "off"
+
+    init() {
+        let history = WatchHistory.load()
+        var library = SampleData.movies
+        let sampleKeys = Set(library.map(\.historyKey))
+        library += LibraryStore.load().filter { !sampleKeys.contains($0.historyKey) }
+        WatchHistory.apply(history, to: &library)
+        items = library
+        watchMap = history
+
+        let saved = ProfileStore.load()
+        profiles = saved
+        activeProfileID = ProfileStore.loadActiveID(in: saved)
+    }
+
+    /// Adds a title found online and remembers it across launches.
+    func addToLibrary(_ item: MediaItem) {
+        items.append(item)
+        let sampleIDs = Set(SampleData.movies.map(\.id))
+        LibraryStore.save(items.filter { !sampleIDs.contains($0.id) })
+    }
 
     var activeProfile: Profile {
         profiles.first { $0.id == activeProfileID } ?? profiles[0]
@@ -186,8 +198,8 @@ final class AppState {
     }
 
     private func persistWatch(_ item: MediaItem) {
-        watchMap[item.id] = WatchRecord(
-            id: item.id,
+        watchMap[item.historyKey] = WatchRecord(
+            key: item.historyKey,
             progressSeconds: item.progressSeconds,
             isWatched: item.isWatched,
             isFavorite: item.isFavorite,

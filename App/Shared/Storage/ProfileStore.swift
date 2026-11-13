@@ -4,16 +4,33 @@ import Foundation
 import CasaPlayKit
 
 enum ProfileStore {
-    static var storeURL: URL {
-        let dir = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("CasaPlay", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("profiles.json")
+    private static let file = "profiles.json"
+    private static let activeKey = "activeProfileID"
+
+    /// Saved profiles, or the starter set saved on first launch so their IDs stay fixed.
+    static func load() -> [Profile] {
+        if let saved = CasaPlayStorage.load([Profile].self, from: file), !saved.isEmpty {
+            return saved
+        }
+        let starter = SampleData.profiles
+        save(starter)
+        return starter
     }
 
     static func save(_ profiles: [Profile]) {
-        guard let data = try? JSONEncoder().encode(profiles) else { return }
-        try? data.write(to: storeURL, options: .atomicWrite)
+        CasaPlayStorage.save(profiles, to: file)
+    }
+
+    static func loadActiveID(in profiles: [Profile]) -> UUID {
+        if let raw = UserDefaults.standard.string(forKey: activeKey),
+           let id = UUID(uuidString: raw),
+           profiles.contains(where: { $0.id == id }) {
+            return id
+        }
+        return profiles[0].id
+    }
+
+    static func saveActiveID(_ id: UUID) {
+        UserDefaults.standard.set(id.uuidString, forKey: activeKey)
     }
 }

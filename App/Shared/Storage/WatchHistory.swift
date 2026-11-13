@@ -1,51 +1,78 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// Persists per-item watch state (progress, watched flag, favourite flag)
-// to ~/Library/Application Support/CasaPlay/watchhistory.json.
-// Loaded once at app start and merged into app.items; written on every
-// progress update, toggle-watched, and toggle-favourite.
+// Persists per-title watch state to Application Support/CasaPlay/watchhistory.json,
+// and titles added from Search to library.json.
 
 import Foundation
 import CasaPlayKit
 
+extension MediaItem {
+    /// Stable across launches, unlike `id`, which sample titles regenerate each run.
+    var historyKey: String {
+        if let imdbID, !imdbID.isEmpty { return imdbID }
+        return "\(title.lowercased())|\(year ?? 0)"
+    }
+}
+
 struct WatchRecord: Codable {
-    var id: UUID
+    var key: String
     var progressSeconds: TimeInterval
     var isWatched: Bool
     var isFavorite: Bool
     var lastPlayedAt: Date?
 }
 
-struct WatchHistory {
-    private static var storeURL: URL = {
-        let support = FileManager.default
+enum CasaPlayStorage {
+    static func url(_ filename: String) -> URL {
+        let dir = FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("CasaPlay", isDirectory: true)
-        try? FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-        return support.appendingPathComponent("watchhistory.json")
-    }()
-
-    static func load() -> [UUID: WatchRecord] {
-        guard let data = try? Data(contentsOf: storeURL),
-              let records = try? JSONDecoder().decode([WatchRecord].self, from: data)
-        else { return [:] }
-        return Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(filename)
     }
 
-    static func save(_ map: [UUID: WatchRecord]) {
-        let records = Array(map.values)
-        guard let data = try? JSONEncoder().encode(records) else { return }
-        let opts: Data.WritingOptions = [.atomicWrite]
-        try? data.write(to: storeURL, options: opts)
+    static func load<T: Decodable>(_ type: T.Type, from filename: String) -> T? {
+        guard let data = try? Data(contentsOf: url(filename)) else { return nil }
+        return try? JSONDecoder().decode(type, from: data)
     }
 
-    static func apply(_ map: [UUID: WatchRecord], to items: inout [MediaItem]) {
+    static func save<T: Encodable>(_ value: T, to filename: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        try? data.write(to: url(filename), options: .atomicWrite)
+    }
+}
+
+enum WatchHistory {
+    private static let file = "watchhistory.json"
+
+    static func load() -> [String: WatchRecord] {
+        let records = CasaPlayStorage.load([WatchRecord].self, from: file) ?? []
+        return Dictionary(records.map { ($0.key, $0) }, uniquingKeysWith: { _, last in last })
+    }
+
+    static func save(_ map: [String: WatchRecord]) {
+        CasaPlayStorage.save(Array(map.values), to: file)
+    }
+
+    static func apply(_ map: [String: WatchRecord], to items: inout [MediaItem]) {
         for i in items.indices {
-            guard let rec = map[items[i].id] else { continue }
+            guard let rec = map[items[i].historyKey] else { continue }
             items[i].progressSeconds = rec.progressSeconds
             items[i].isWatched = rec.isWatched
             items[i].isFavorite = rec.isFavorite
             items[i].lastPlayedAt = rec.lastPlayedAt
         }
+    }
+}
+
+enum LibraryStore {
+    private static let file = "library.json"
+
+    static func load() -> [MediaItem] {
+        CasaPlayStorage.load([MediaItem].self, from: file) ?? []
+    }
+
+    static func save(_ items: [MediaItem]) {
+        CasaPlayStorage.save(items, to: file)
     }
 }
