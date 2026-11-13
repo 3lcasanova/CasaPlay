@@ -15,16 +15,27 @@ private final class FakeUDPTracker: UDPExchange, @unchecked Sendable {
     func exchange(_ request: Data, timeout: TimeInterval) async throws -> Data {
         let b = [UInt8](request)
         requests.append(b)
-        let action = UInt32(b[8]) << 24 | UInt32(b[9]) << 16 | UInt32(b[10]) << 8 | UInt32(b[11])
+        let action: UInt32 = b[8..<12].reduce(0) { $0 << 8 | UInt32($1) }
         var tid = Array(b[12..<16])
         if corruptTransaction { tid[0] ^= 0xFF }
+        var reply: [UInt8] = []
         if let failWith {
-            return Data([0, 0, 0, 3] + tid + Array(failWith.utf8))
+            reply = [0, 0, 0, 3]
+            reply += tid
+            reply += Array(failWith.utf8)
+        } else if action == 0 {
+            reply = [0, 0, 0, 0]
+            reply += tid
+            reply += be(connectionID)
+        } else {
+            let header: [UInt8] = [0, 0, 0, 1]
+            let counts: [UInt8] = [0, 0, 0x07, 0x08, 0, 0, 0, 5, 0, 0, 0, 9]
+            reply = header
+            reply += tid
+            reply += counts
+            reply += peers
         }
-        if action == 0 {
-            return Data([0, 0, 0, 0] + tid + be(connectionID))
-        }
-        return Data([0, 0, 0, 1] + tid + [0, 0, 0x07, 0x08] + [0, 0, 0, 5] + [0, 0, 0, 9] + peers)
+        return Data(reply)
     }
 
     func close() { closed = true }
@@ -33,10 +44,10 @@ private final class FakeUDPTracker: UDPExchange, @unchecked Sendable {
 }
 
 final class UDPTrackerTests: XCTestCase {
-    private let hash = InfoHash(hex: "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c")!
+    private let infoHash = InfoHash(hex: "dd8255ecdc7ca55fb0bbf81323d87062db1f6d1c")!
 
     private func announce() -> HTTPTrackerClient.Announce {
-        HTTPTrackerClient.Announce(infoHash: hash, peerID: Data(repeating: 0x41, count: 20),
+        HTTPTrackerClient.Announce(infoHash: infoHash, peerID: Data(repeating: 0x41, count: 20),
                                    uploaded: 3, downloaded: 2, left: 1_000, event: "started")
     }
 
@@ -66,7 +77,7 @@ final class UDPTrackerTests: XCTestCase {
         XCTAssertEqual(ann.count, 98)
         XCTAssertEqual(Array(ann[0..<8]), [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
         XCTAssertEqual(Array(ann[8..<12]), [0, 0, 0, 1])
-        XCTAssertEqual(Data(ann[16..<36]), hash.bytes)
+        XCTAssertEqual(Data(ann[16..<36]), infoHash.bytes)
         XCTAssertEqual(Array(ann[80..<84]), [0, 0, 0, 2], "event should be 'started'")
         XCTAssertEqual(Array(ann[96..<98]), [0x1A, 0xE1], "port 6881")
     }
