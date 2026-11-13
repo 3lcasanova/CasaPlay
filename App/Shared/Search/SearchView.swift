@@ -227,13 +227,10 @@ struct SearchView: View {
 
     @MainActor
     private func selectMovie(_ movie: TMDBMovie) async {
-        guard let client = app.tmdbClient else { return }
         isFetchingDetail = true
         defer { isFetchingDetail = false }
         do {
-            let detail = try await client.movieDetail(id: movie.id)
-            let item = client.toMediaItem(detail)
-            addAndNavigate(item)
+            if let id = try await app.openMovie(tmdbID: movie.id) { navPath.append(id) }
         } catch {
             searchError = error.localizedDescription
         }
@@ -241,33 +238,19 @@ struct SearchView: View {
 
     @MainActor
     private func selectShow(_ show: TMDBShow) async {
-        guard let client = app.tmdbClient else { return }
         isFetchingDetail = true
         defer { isFetchingDetail = false }
         do {
-            let detail = try await client.showDetail(id: show.id)
-            let item = client.toMediaItem(detail)
-            addAndNavigate(item)
+            if let id = try await app.openShow(tmdbID: show.id) { navPath.append(id) }
         } catch {
             searchError = error.localizedDescription
         }
-    }
-
-    private func addAndNavigate(_ item: MediaItem) {
-        // Reuse an existing item by imdbID if already in the library.
-        if let imdb = item.imdbID,
-           let existing = app.items.first(where: { $0.imdbID == imdb }) {
-            navPath.append(existing.id)
-            return
-        }
-        app.addToLibrary(item)
-        navPath.append(item.id)
     }
 }
 
 // MARK: - SearchPosterCard
 
-private struct SearchPosterCard: View {
+struct SearchPosterCard: View {
     let title: String
     let year: Int?
     let posterPath: String?

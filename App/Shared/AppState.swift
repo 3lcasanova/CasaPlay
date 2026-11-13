@@ -82,6 +82,7 @@ final class AppState {
 
     var profiles: [Profile]
     var sources: [MediaSource] = SampleData.sources
+    var discover = DiscoverFeed()
     var activeProfileID: UUID {
         didSet { ProfileStore.saveActiveID(activeProfileID) }
     }
@@ -100,9 +101,7 @@ final class AppState {
 
     init() {
         let history = WatchHistory.load()
-        var library = SampleData.movies
-        let sampleKeys = Set(library.map(\.historyKey))
-        library += LibraryStore.load().filter { !sampleKeys.contains($0.historyKey) }
+        var library = LibraryStore.load()
         WatchHistory.apply(history, to: &library)
         items = library
         watchMap = history
@@ -115,8 +114,30 @@ final class AppState {
     /// Adds a title found online and remembers it across launches.
     func addToLibrary(_ item: MediaItem) {
         items.append(item)
-        let sampleIDs = Set(SampleData.movies.map(\.id))
-        LibraryStore.save(items.filter { !sampleIDs.contains($0.id) })
+        LibraryStore.save(items)
+    }
+
+    /// Fetches a TMDB film, adds it to the library (once), and returns its library ID.
+    @MainActor
+    func openMovie(tmdbID: Int) async throws -> MediaItem.ID? {
+        guard let client = tmdbClient else { return nil }
+        return adopt(client.toMediaItem(try await client.movieDetail(id: tmdbID)))
+    }
+
+    @MainActor
+    func openShow(tmdbID: Int) async throws -> MediaItem.ID? {
+        guard let client = tmdbClient else { return nil }
+        return adopt(client.toMediaItem(try await client.showDetail(id: tmdbID)))
+    }
+
+    private func adopt(_ item: MediaItem) -> MediaItem.ID {
+        if let existing = items.first(where: { $0.historyKey == item.historyKey }) {
+            return existing.id
+        }
+        var fresh = [item]
+        WatchHistory.apply(watchMap, to: &fresh)
+        addToLibrary(fresh[0])
+        return item.id
     }
 
     var activeProfile: Profile {

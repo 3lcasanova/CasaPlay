@@ -44,6 +44,24 @@ public struct TMDBClient {
         return root.results
     }
 
+    // MARK: - Discover
+
+    public func trendingMovies() async throws -> [TMDBMovie] {
+        try await get(path: "/trending/movie/week", params: [:], as: TMDBMoviePage.self).results
+    }
+
+    public func trendingTV() async throws -> [TMDBShow] {
+        try await get(path: "/trending/tv/week", params: [:], as: TMDBShowPage.self).results
+    }
+
+    public func popularMovies(page: Int = 1) async throws -> [TMDBMovie] {
+        try await get(path: "/movie/popular", params: ["page": "\(page)"], as: TMDBMoviePage.self).results
+    }
+
+    public func topRatedMovies() async throws -> [TMDBMovie] {
+        try await get(path: "/movie/top_rated", params: [:], as: TMDBMoviePage.self).results
+    }
+
     // MARK: - Detail
 
     public func movieDetail(id: Int) async throws -> TMDBMovieDetail {
@@ -168,6 +186,7 @@ public struct TMDBMovie: Decodable, Identifiable, Sendable {
     public let title: String
     public let release_date: String?
     public let poster_path: String?
+    public let backdrop_path: String?
     public let overview: String?
     public let vote_average: Double?
 
@@ -182,6 +201,7 @@ public struct TMDBShow: Decodable, Identifiable, Sendable {
     public let name: String
     public let first_air_date: String?
     public let poster_path: String?
+    public let backdrop_path: String?
     public let overview: String?
     public let vote_average: Double?
 

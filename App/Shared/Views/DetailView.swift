@@ -49,7 +49,9 @@ private struct DetailContent: View {
                         .focusableOnTV()
                 }
 
-                playbackPanel(decision)
+                if !needsStream {
+                    playbackPanel(decision)
+                }
 
                 subtitlesPanel
 
@@ -120,9 +122,11 @@ private struct DetailContent: View {
                         .font(.casa(13))
                         .foregroundStyle(Theme.textSecondary)
                 }
-                HStack(spacing: Metrics.s(6)) {
-                    ForEach(item.file.badges, id: \.self) { badge in
-                        Pill(text: badge)
+                if !needsStream {
+                    HStack(spacing: Metrics.s(6)) {
+                        ForEach(item.file.badges, id: \.self) { badge in
+                            Pill(text: badge)
+                        }
                     }
                 }
             }

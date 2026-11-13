@@ -34,6 +34,38 @@ final class TMDBClientTests: XCTestCase {
         XCTAssertEqual(results[0].poster_path, "/q6y0Go1tsGEsmtFryDOJo3dEmqu.jpg")
     }
 
+    // MARK: - Discover
+
+    func testTrendingMoviesDecodesBackdrop() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/trending/movie/week"] = HTTPResponse(status: 200, body: Data("""
+        {"results": [{"id": 1, "title": "Dune", "release_date": "2021-09-15",
+                      "poster_path": "/p.jpg", "backdrop_path": "/b.jpg"}]}
+        """.utf8))
+        let results = try await makeClient(transport).trendingMovies()
+        XCTAssertEqual(results.first?.backdrop_path, "/b.jpg")
+    }
+
+    func testTrendingTVAndPopularAndTopRated() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/trending/tv/week"] = HTTPResponse(status: 200, body: Data("""
+        {"results": [{"id": 2, "name": "Severance"}]}
+        """.utf8))
+        transport.routes["/3/movie/popular"] = HTTPResponse(status: 200, body: Data("""
+        {"results": [{"id": 3, "title": "A"}, {"id": 4, "title": "B"}]}
+        """.utf8))
+        transport.routes["/3/movie/top_rated"] = HTTPResponse(status: 200, body: Data("""
+        {"results": [{"id": 5, "title": "C"}]}
+        """.utf8))
+        let client = makeClient(transport)
+        let tv = try await client.trendingTV()
+        let popular = try await client.popularMovies()
+        let top = try await client.topRatedMovies()
+        XCTAssertEqual(tv.first?.name, "Severance")
+        XCTAssertEqual(popular.count, 2)
+        XCTAssertEqual(top.first?.id, 5)
+    }
+
     func testSearchMoviesEmptyResults() async throws {
         let transport = FakeTransport()
         transport.routes["/3/search/movie"] = HTTPResponse(status: 200, body: Data("""
