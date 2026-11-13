@@ -322,17 +322,7 @@ struct StreamSourcesView: View {
             dismiss()
 
         case .torrent(let hash, _, let trackers):
-            // The engine has to be given the torrent before its file list can load. Before,
-            // only the hash was passed on, so the file list waited forever on a torrent
-            // that had never been added.
-            var magnet = "magnet:?xt=urn:btih:" + hash.hex
-            var allowed = CharacterSet.urlQueryAllowed
-            allowed.remove(charactersIn: "&=+?#")
-            for tracker in trackers {
-                if let encoded = tracker.absoluteString.addingPercentEncoding(withAllowedCharacters: allowed) {
-                    magnet += "&tr=" + encoded
-                }
-            }
+            let magnet = candidate.originalMagnet ?? MagnetLink(infoHash: hash, trackers: trackers).uri
             addTorrent { await torrents.add(magnet: magnet) }
 
         case .torrentFile(let url):

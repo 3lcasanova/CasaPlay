@@ -70,6 +70,7 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     public var providerRole: ProviderRole
     public var providerPriority: Int
     public var location: Location
+    public var originalMagnet: String?
     public var label: String
     public var filename: String?
     public var advertised: AdvertisedQuality

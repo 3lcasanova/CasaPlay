@@ -65,18 +65,21 @@ struct TorrentStreamProvider: StreamProvider {
 
     private func torrentCandidate(from tc: TorrentCandidate) -> StreamCandidate? {
         let location: StreamCandidate.Location
+        let originalMagnet: String?
         if let magnet = tc.magnet, let (hash, trackers) = parseMagnet(magnet) {
             location = .torrent(hash, fileIndex: nil, trackers: trackers)
+            originalMagnet = magnet
         } else if let torrentURL = tc.torrentURL, torrentURL.scheme?.lowercased() == "https" {
             // The info hash isn't known until the .torrent file is downloaded, which
             // happens when the user picks this stream.
             location = .torrentFile(torrentURL)
+            originalMagnet = nil
         } else {
             return nil
         }
 
         let adv = AdvertisedQuality.parse(tc.title, size: nil)
-        return StreamCandidate(
+        var candidate = StreamCandidate(
             id: "torrent:\(tc.id)",
             providerID: providerID,
             providerName: name,
@@ -88,6 +91,8 @@ struct TorrentStreamProvider: StreamProvider {
             advertised: adv,
             fetchedAt: Date()
         )
+        candidate.originalMagnet = originalMagnet
+        return candidate
     }
 
     // MARK: - Magnet parsing
