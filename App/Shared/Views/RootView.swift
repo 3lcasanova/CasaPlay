@@ -87,6 +87,7 @@ struct RootView: View {
     private func sectionView(_ section: AppSection) -> some View {
         switch section {
         case .home: HomeView()
+        case .search: SearchView()
         case .movies: LibraryView(mode: .all)
         case .favorites: LibraryView(mode: .favorites)
         case .torrents: TorrentsView()

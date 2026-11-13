@@ -45,6 +45,10 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     public var cast: [CastMember]
     /// Placeholder artwork colour (0...360) until real posters arrive from TMDB.
     public var artHue: Double
+    /// TMDB poster path, e.g. "/abc123.jpg" — build a full URL with TMDBClient.posterURL(_:).
+    public var posterPath: String?
+    /// TMDB backdrop path.
+    public var backdropPath: String?
     public var streamURL: URL?
     /// HTTP headers to inject when playing this item (e.g. Referer from a Stremio proxyHeaders manifest).
     public var streamHeaders: [String: String]?
@@ -72,6 +76,8 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         imdbVotes: Int? = nil,
         cast: [CastMember] = [],
         artHue: Double = 30,
+        posterPath: String? = nil,
+        backdropPath: String? = nil,
         streamURL: URL? = nil,
         streamHeaders: [String: String]? = nil,
         progressSeconds: TimeInterval = 0,
@@ -97,6 +103,8 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
         self.imdbVotes = imdbVotes
         self.cast = cast
         self.artHue = artHue
+        self.posterPath = posterPath
+        self.backdropPath = backdropPath
         self.streamURL = streamURL
         self.streamHeaders = streamHeaders
         self.progressSeconds = progressSeconds

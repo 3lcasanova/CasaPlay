@@ -87,6 +87,7 @@ targets:
           - _http._tcp
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        TMDBAPIKey: $(TMDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
 
@@ -115,5 +116,6 @@ targets:
           - _http._tcp
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        TMDBAPIKey: $(TMDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)

@@ -4,13 +4,14 @@ import SwiftUI
 import CasaPlayKit
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case home, movies, favorites, torrents, extensions, servers, sources, profile
+    case home, search, movies, favorites, torrents, extensions, servers, sources, profile
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .home: return "Home"
+        case .search: return "Search"
         case .movies: return "Movies"
         case .favorites: return "Favorites"
         case .torrents: return "Torrents"
@@ -24,6 +25,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .home: return "house"
+        case .search: return "magnifyingglass"
         case .movies: return "film"
         case .favorites: return "heart"
         case .torrents: return "arrow.down.circle"
@@ -48,6 +50,7 @@ enum ServiceKeys {
     static let openSubtitles = "openSubtitlesAPIKey"
     static let openSubtitlesToken = "openSubtitlesToken"
     static let openSubtitlesUser = "openSubtitlesUsername"
+    static let tmdb = "tmdbAPIKey"
 
     /// The key entered in Online services, or else the one built in from Config/Secrets.xcconfig.
     static func value(_ key: String) -> String {
@@ -61,6 +64,7 @@ enum ServiceKeys {
         switch key {
         case omdb: plistKey = "OMDbAPIKey"
         case openSubtitles: plistKey = "OpenSubtitlesAPIKey"
+        case tmdb: plistKey = "TMDBAPIKey"
         default: return ""
         }
         let value = (Bundle.main.object(forInfoDictionaryKey: plistKey) as? String ?? "")
@@ -215,6 +219,11 @@ final class AppState {
     var omdbClient: OMDbClient? {
         let key = ServiceKeys.value(ServiceKeys.omdb)
         return key.isEmpty ? nil : OMDbClient(apiKey: key)
+    }
+
+    var tmdbClient: TMDBClient? {
+        let key = ServiceKeys.value(ServiceKeys.tmdb)
+        return key.isEmpty ? nil : TMDBClient(apiKey: key)
     }
 
     /// Fetches the current IMDb rating for a title that has an IMDb ID.

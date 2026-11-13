@@ -6,6 +6,7 @@ import SwiftUI
 import CasaPlayKit
 
 struct OnlineServicesView: View {
+    @AppStorage(ServiceKeys.tmdb) private var tmdbKey = ""
     @AppStorage(ServiceKeys.omdb) private var omdbKey = ""
     @AppStorage(ServiceKeys.openSubtitles) private var openSubtitlesKey = ""
     @AppStorage(ServiceKeys.openSubtitlesUser) private var username = ""
@@ -17,6 +18,15 @@ struct OnlineServicesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
+                ServiceSection(
+                    title: "TMDB (search)",
+                    detail: "Powers the Search tab — movie and TV show discovery with posters and metadata. Get a free read access token at themoviedb.org under Settings → API."
+                ) {
+                    SecureField("TMDB read access token", text: $tmdbKey)
+                        .fieldStyle()
+                    KeySourceNote(entered: tmdbKey, builtIn: ServiceKeys.builtIn(ServiceKeys.tmdb))
+                }
+
                 ServiceSection(
                     title: "IMDb ratings",
                     detail: "IMDb has no public API, so CasaPlay reads IMDb ratings through OMDb. Get a free key at omdbapi.com."
@@ -64,7 +74,7 @@ struct OnlineServicesView: View {
                         .foregroundStyle(Theme.textSecondary)
                 }
 
-                Text("Keys stay on this device. CasaPlay only sends them to OMDb and OpenSubtitles.")
+                Text("Keys stay on this device. CasaPlay only sends them to TMDB, OMDb and OpenSubtitles.")
                     .font(.casa(12))
                     .foregroundStyle(Theme.textSecondary)
                     .focusableOnTV()
