@@ -16,6 +16,7 @@ struct StreamSourcesView: View {
     @State private var results = SourceResults()
     @State private var aggregatorTask: Task<Void, Never>?
     @State private var showQualityPicker = false
+    @State private var isAddingTorrent = false
 
     var body: some View {
         NavigationStack {
@@ -81,6 +82,24 @@ struct StreamSourcesView: View {
         }
         .task { await runAggregator() }
         .onDisappear { aggregatorTask?.cancel() }
+        .sheet(item: Binding(
+            get: { app.pendingTorrentHash.map(IdentifiableInfoHash.init) },
+            set: { app.pendingTorrentHash = $0?.hash }
+        )) { wrapper in
+            TorrentDetailView(hash: wrapper.hash)
+        }
+        .overlay {
+            if isAddingTorrent {
+                VStack(spacing: Metrics.s(10)) {
+                    ProgressView()
+                    Text("Adding torrent…")
+                        .font(.casa(13))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                .padding(Metrics.s(24))
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
     }
 
     // MARK: - Stream list
@@ -208,28 +227,62 @@ struct StreamSourcesView: View {
         providers += await center.providers(for: request.stremioType, id: request.stremioID)
         // Self-hosted servers (Plex, Jellyfin)
         providers += servers.providers()
-        // TODO: TorrentCenter provider (Phase 4)
+        // Torrent sources (backup priority)
+        providers.append(TorrentStreamProvider(center: torrents))
         return providers
     }
 
     // MARK: - Playback
 
     private func play(_ candidate: StreamCandidate) {
-        guard case .http(let url, let headers) = candidate.location else { return }
-        // Build a transient MediaItem with the resolved URL and headers for AVFoundation.
-        let ext = url.pathExtension.lowercased()
-        let container: MediaContainer = ext == "m3u8" ? .hls : (ext == "mp4" ? .mp4 : .other)
-        let item = MediaItem(
-            id: UUID(),
-            title: request.title,
-            runtimeSeconds: 0,
-            file: MediaFileInfo(container: container, videoCodec: .hevc),
-            imdbID: request.kind == .movie ? request.id : nil,
-            streamURL: url,
-            streamHeaders: headers.isEmpty ? nil : headers
-        )
-        app.play(item)
-        dismiss()
+        switch candidate.location {
+        case .http(let url, let headers):
+            // Direct HTTP/HLS stream — hand off to AVFoundation player.
+            let ext = url.pathExtension.lowercased()
+            let container: MediaContainer = ext == "m3u8" ? .hls : (ext == "mp4" ? .mp4 : .other)
+            let item = MediaItem(
+                id: UUID(),
+                title: request.title,
+                runtimeSeconds: 0,
+                file: MediaFileInfo(container: container, videoCodec: .hevc),
+                imdbID: request.kind == .movie ? request.id : nil,
+                streamURL: url,
+                streamHeaders: headers.isEmpty ? nil : headers
+            )
+            app.play(item)
+            dismiss()
+
+        case .torrent(let hash, _, _):
+            // Torrent already has an InfoHash — navigate straight to the file picker.
+            app.pendingTorrentHash = hash
+            dismiss()
+
+        case .unsupported(let reason) where reason.hasPrefix("Torrent file"):
+            // .torrent URL candidate — look up by ID and add via TorrentCenter.
+            if let tc = findTorrentCandidate(id: candidate.id) {
+                isAddingTorrent = true
+                Task {
+                    if let hash = await torrents.add(tc) {
+                        await MainActor.run {
+                            app.pendingTorrentHash = hash
+                            dismiss()
+                        }
+                    }
+                    await MainActor.run { isAddingTorrent = false }
+                }
+            }
+
+        default:
+            break
+        }
+    }
+
+    /// Look up the original TorrentCandidate by StreamCandidate ID.
+    private func findTorrentCandidate(id: String) -> TorrentCandidate? {
+        // The ID is "torrent:{tc.id}"; reverse-map isn't stored, so we
+        // keep a secondary list produced by TorrentStreamProvider.
+        // For now, return nil — .torrent file candidates shown as info only.
+        return nil
     }
 }
 
@@ -454,4 +507,12 @@ private extension QualityMode {
         case .allowFHDFallback: return "Allow 1080p"
         }
     }
+}
+
+// MARK: - Identifiable wrapper for InfoHash (for .sheet(item:))
+
+private struct IdentifiableInfoHash: Identifiable {
+    let hash: InfoHash
+    var id: String { hash.hex }
+    init(_ hash: InfoHash) { self.hash = hash }
 }

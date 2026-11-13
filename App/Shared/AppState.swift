@@ -83,6 +83,8 @@ final class AppState {
     var selectedSection: AppSection = .home
     var playing: MediaItem?
     var router = PlaybackRouter()
+    /// Set when the user picks a torrent stream; clears after the sheet is dismissed.
+    var pendingTorrentHash: InfoHash?
 
     /// Subtitle files loaded for each title (downloaded, or found next to the video).
     var subtitleLibrary: [MediaItem.ID: [LoadedSubtitle]] = [:]
