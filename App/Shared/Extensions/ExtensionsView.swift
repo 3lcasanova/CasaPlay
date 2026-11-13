@@ -31,7 +31,7 @@ struct ExtensionsView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Metrics.s(8)) {
                         ForEach(Tab.allCases) { t in
-                            ChipButton(t.title, selected: tab == t) { tab = t }
+                            ChipButton(title: t.title, isSelected: tab == t) { tab = t }
                         }
                     }
                     .padding(.horizontal, Metrics.screenPadding)
@@ -41,11 +41,7 @@ struct ExtensionsView: View {
                 Divider().background(Theme.surfaceStrong)
 
                 // Content
-                switch tab {
-                case .repositories: RepositoriesTab()
-                case .addons: AddonsTab()
-                case .providers: ProvidersTab()
-                }
+                tabContent
             }
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle("Extensions")
@@ -58,6 +54,15 @@ struct ExtensionsView: View {
                 }
             }
             #endif
+        }
+    }
+
+    @ViewBuilder
+    private var tabContent: some View {
+        switch tab {
+        case .repositories: RepositoriesTab()
+        case .addons: AddonsTab()
+        case .providers: ProvidersTab()
         }
     }
 }
@@ -157,7 +162,7 @@ private struct RepositoryRow: View {
             Spacer(minLength: 0)
 
             Menu {
-                Button { Task { await center.refreshRepository(repo.id) } } label: {
+                Button { Task { await center.refreshRepository(repo.url) } } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 Button(role: .destructive) { showRemove = true } label: {
@@ -173,7 +178,7 @@ private struct RepositoryRow: View {
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         .focusableOnTV()
         .confirmationDialog("Remove repository?", isPresented: $showRemove, titleVisibility: .visible) {
-            Button("Remove", role: .destructive) { Task { await center.removeRepository(repo.id) } }
+            Button("Remove", role: .destructive) { Task { await center.removeRepository(repo.url) } }
             Button("Cancel", role: .cancel) {}
         }
     }
@@ -284,7 +289,7 @@ private struct AddonRow: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: Metrics.s(6)) {
-                    Text(addon.displayName)
+                    Text(addon.name)
                         .font(.casa(14, weight: .semibold))
                         .foregroundStyle(addon.isEnabled ? Theme.textPrimary : Theme.textSecondary)
                     if !addon.isEnabled {
@@ -350,7 +355,7 @@ private struct AddonRow: View {
         .padding(Metrics.s(14))
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         .focusableOnTV()
-        .confirmationDialog("Remove \(addon.displayName)?", isPresented: $showRemove, titleVisibility: .visible) {
+        .confirmationDialog("Remove \(addon.name)?", isPresented: $showRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { Task { await center.remove(addon.id) } }
             Button("Cancel", role: .cancel) {}
         }
@@ -368,7 +373,7 @@ private struct RepositoryEntryRow: View {
                 Text(entry.name)
                     .font(.casa(14, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
-                if let d = entry.description {
+                if let d = entry.summary {
                     Text(d).font(.casa(11)).foregroundStyle(Theme.textSecondary).lineLimit(2)
                 }
             }
@@ -409,7 +414,7 @@ private struct AddonDetailSheet: View {
                     HStack(spacing: Metrics.s(14)) {
                         Circle().fill(addon.health.status.color)
                             .frame(width: Metrics.s(10), height: Metrics.s(10))
-                        Text(addon.displayName)
+                        Text(addon.name)
                             .font(.casa(20, weight: .bold))
                             .foregroundStyle(Theme.textPrimary)
                     }
@@ -555,7 +560,7 @@ private struct ProviderSummaryRow: View {
             Circle().fill(addon.health.status.color)
                 .frame(width: Metrics.s(8), height: Metrics.s(8))
             VStack(alignment: .leading, spacing: 2) {
-                Text(addon.displayName)
+                Text(addon.name)
                     .font(.casa(13, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Text(addon.displaySource)

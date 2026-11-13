@@ -53,13 +53,13 @@ final class ExtensionCenter {
         return repo
     }
 
-    func refreshRepository(_ id: UUID) async {
-        await manager.refreshRepository(id)
+    func refreshRepository(_ url: URL) async {
+        await manager.refreshRepository(url)
         await reload()
     }
 
-    func removeRepository(_ id: UUID) async {
-        await manager.removeRepository(id)
+    func removeRepository(_ url: URL) async {
+        await manager.removeRepository(url)
         await reload()
     }
 

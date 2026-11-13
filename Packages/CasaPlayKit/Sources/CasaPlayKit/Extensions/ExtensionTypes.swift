@@ -96,6 +96,15 @@ public struct ExtensionHealth: Equatable, Codable, Sendable {
     public var consecutiveFailures = 0
 
     public init() {}
+
+    /// The error message when status is `.failing`, otherwise nil.
+    public var lastError: String? {
+        if case .failing(let msg) = status { return msg }
+        return nil
+    }
+
+    /// Alias for `checkedAt`.
+    public var lastChecked: Date? { checkedAt }
 }
 
 /// Primary providers are always waited for; backups never hold up primary results.
