@@ -12,16 +12,6 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     let item: MediaItem
 
-    private var playbackURL: URL? {
-        if let url = item.streamURL { return url }
-        #if DEBUG
-        // Lets the player be tried before a real source exists. Not shipped in release builds.
-        return DevStreams.appleBipBop
-        #else
-        return nil
-        #endif
-    }
-
     var body: some View {
         let decision = app.router.decide(for: item.file)
 
@@ -29,7 +19,7 @@ struct PlayerScreen: View {
             Color.black.ignoresSafeArea()
 
             if decision.engine == .apple || decision.engine == .appleViaServerStream {
-                if let url = playbackURL {
+                if let url = item.streamURL {
                     AVPlayerControllerView(
                         url: url,
                         title: item.title,

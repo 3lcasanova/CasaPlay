@@ -33,6 +33,7 @@ public actor TorrentSession: PeerHost {
     private var store: PieceStore?
     private var picker: PiecePicker?
     private var selectedFile: Int?
+    private var metadataSearchStartedAt: ContinuousClock.Instant?
     private var paused = false
     /// Why the engine paused the torrent by itself (storage full, cache limit). Nil when the
     /// user paused it. Readers are given this instead of a bare "paused".
@@ -105,6 +106,7 @@ public actor TorrentSession: PeerHost {
         pauseReason = nil
         lastError = nil
         if currentMetainfo == nil {
+            metadataSearchStartedAt = .now
             startPeerDiscovery()
             workers.append(Task { await self.fetchMetadataFromExactSources() })
         } else {
@@ -618,7 +620,15 @@ public actor TorrentSession: PeerHost {
         }
         if stopped { s.state = .failed("Cancelled") }
         else if paused { s.state = .paused }
-        else if currentMetainfo == nil { s.state = .fetchingMetadata }
+        else if currentMetainfo == nil {
+            if let started = metadataSearchStartedAt, started.duration(to: .now) >= .seconds(60) {
+                let message = lastError ?? "Still waiting for torrent details. Try importing the .torrent file."
+                s.lastError = message
+                s.state = .failed(message)
+            } else {
+                s.state = .fetchingMetadata
+            }
+        }
         else if s.progress >= 1, selectedFile != nil { s.state = .completed }
         else if selectedFile == nil { s.state = .ready }
         else { s.state = .downloading }

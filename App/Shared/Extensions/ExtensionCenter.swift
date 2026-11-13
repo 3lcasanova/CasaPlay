@@ -57,7 +57,11 @@ final class ExtensionCenter {
     private func installStarterAddons() async {
         let defaults = UserDefaults.standard
         for addon in Self.starterAddons {
+            #if os(tvOS)
+            let doneKey = "starterAddon.persistentStore." + addon.id
+            #else
             let doneKey = "starterAddon.installed." + addon.id
+            #endif
             guard !defaults.bool(forKey: doneKey) else { continue }
             if state.installed.contains(where: { $0.manifest.id == addon.id }) {
                 defaults.set(true, forKey: doneKey)

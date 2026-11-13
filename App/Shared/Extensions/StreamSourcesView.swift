@@ -15,7 +15,6 @@ struct StreamSourcesView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var results = SourceResults()
-    @State private var aggregatorTask: Task<Void, Never>?
     @State private var showQualityPicker = false
     @State private var isAddingTorrent = false
     @State private var addTorrentError: String?
@@ -91,8 +90,9 @@ struct StreamSourcesView: View {
         .alert("Couldn't add torrent", isPresented: .constant(addTorrentError != nil), actions: {
             Button("OK") { addTorrentError = nil }
         }, message: { Text(addTorrentError ?? "") })
-        .task { await runAggregator() }
-        .onDisappear { aggregatorTask?.cancel() }
+        .task(id: center.qualityMode) { [mode = center.qualityMode] in
+            await runAggregator(mode: mode)
+        }
         // The player is presented from the app's root, which can't happen while this sheet is up.
         .onChange(of: app.playing?.id) { _, playingID in
             if playingID != nil { dismiss() }
@@ -124,6 +124,12 @@ struct StreamSourcesView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, Metrics.s(16))
                         .focusableOnTV()
+                }
+                ForEach(results.unavailableReasons, id: \.self) { reason in
+                    Text(reason)
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .multilineTextAlignment(.center)
                 }
                 ForEach(results.ranked) { candidate in
                     StreamCandidateRow(candidate: candidate, isBest: results.bestChoice?.id == candidate.id) {
@@ -192,6 +198,12 @@ struct StreamSourcesView: View {
                 .foregroundStyle(Theme.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, Metrics.s(40))
+            ForEach(results.unavailableReasons, id: \.self) { reason in
+                Text(reason)
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .focusableOnTV()
@@ -253,17 +265,17 @@ struct StreamSourcesView: View {
 
     // MARK: - Aggregator
 
-    private func runAggregator() async {
+    private func runAggregator(mode: QualityMode) async {
+        guard !Task.isCancelled else { return }
+        results = SourceResults()
         let providers = await buildProviders()
+        guard !Task.isCancelled else { return }
         let probe = PlaylistProbe(fallback: AVFoundationProbe())
         let agg = SourceAggregator(providers: providers, probe: probe)
-        aggregatorTask = Task {
-            for await snapshot in agg.run(request, mode: center.qualityMode) {
-                results = snapshot
-                if Task.isCancelled { break }
-            }
+        for await snapshot in agg.run(request, mode: mode) {
+            guard !Task.isCancelled else { return }
+            results = snapshot
         }
-        await aggregatorTask?.value
     }
 
     private func buildProviders() async -> [any StreamProvider] {
@@ -356,10 +368,17 @@ private struct StreamCandidateRow: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(candidate.label.isEmpty ? candidate.filename ?? "Stream" : candidate.label)
+                    Text(verbatim: candidate.label.isEmpty ? candidate.filename ?? "Stream" : candidate.label)
                         .font(.casa(14, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
-                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let filename = candidate.filename, !candidate.label.isEmpty,
+                       !candidate.label.localizedCaseInsensitiveContains(filename) {
+                        Text(verbatim: filename)
+                            .font(.casa(11))
+                            .foregroundStyle(Theme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     HStack(spacing: Metrics.s(6)) {
                         Text(candidate.providerName)
                             .font(.casa(11))

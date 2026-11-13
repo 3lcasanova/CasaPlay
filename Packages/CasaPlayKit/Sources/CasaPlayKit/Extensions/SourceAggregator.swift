@@ -192,6 +192,15 @@ public struct StremioStreamProvider: StreamProvider {
                 guard src.hasPrefix("tracker:") else { return nil }
                 return URL(string: String(src.dropFirst("tracker:".count)))
             }
+            guard trackers.contains(where: {
+                $0.host != nil && ["http", "https", "udp"].contains($0.scheme?.lowercased() ?? "")
+            }) else {
+                return .unsupported("This torrent has no supported tracker CasaPlay can contact. Import its .torrent file to see the file list.")
+            }
+            if let filename = s.behaviorHints?.filename,
+               ["mkv", "avi", "webm"].contains((filename as NSString).pathExtension.lowercased()) {
+                return .unsupported("This file format requires a compatibility player.")
+            }
             return .torrent(hash, fileIndex: s.fileIdx, trackers: trackers)
         }
         if s.ytId != nil { return .unsupported("YouTube links can't be played in CasaPlay.") }
@@ -332,7 +341,20 @@ public struct SourceResults: Equatable, Sendable {
     }
 
     /// Hidden streams that are real streams, not "Where to watch" links.
-    public var hiddenStreamCount: Int { hidden.filter { $0.externalService == nil }.count }
+    public var hiddenStreamCount: Int {
+        hidden.filter {
+            if case .unplayable = $0.verification { return false }
+            return $0.externalService == nil
+        }.count
+    }
+
+    public var unavailableReasons: [String] {
+        Set(hidden.compactMap { candidate -> String? in
+            guard candidate.externalService == nil,
+                  case .unplayable(let reason) = candidate.verification else { return nil }
+            return reason
+        }).sorted()
+    }
     /// Probes still running.
     public var checking = 0
 
@@ -360,12 +382,13 @@ public struct SourceResults: Equatable, Sendable {
     public var emptyMessage: String? {
         guard finished, ranked.isEmpty else { return nil }
         let total = hiddenStreamCount
-        // Results came back but every one was for something else: say so, or the
-        // provider's result count next to "nothing found" looks like a fault.
-        if total == 0, !rejected.isEmpty {
-            let n = rejected.count
-            let what = request.kind == .movie ? "film" : "episode"
-            return "\(n) result\(n == 1 ? " was" : "s were") found, but \(n == 1 ? "it is" : "they are all") for a different title, year or episode, not this \(what). None of your sources has it."
+        if total == 0, !unavailableReasons.isEmpty {
+            return "Sources returned matching results, but CasaPlay couldn't play them."
+        }
+        if hidden.isEmpty, !rejected.isEmpty {
+            return request.kind == .movie
+                ? "No results matched this movie."
+                : "No results matched this episode."
         }
         switch mode {
         case .uhdOnly:
