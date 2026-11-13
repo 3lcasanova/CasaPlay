@@ -110,29 +110,7 @@ struct StreamSourcesView: View {
                         .focusableOnTV()
                 }
                 if !results.rejected.isEmpty {
-                    DisclosureGroup {
-                        ForEach(results.rejected.indices, id: \.self) { i in
-                            let r = results.rejected[i]
-                            HStack {
-                                Text(r.candidate.filename ?? r.candidate.id)
-                                    .font(.casa(11))
-                                    .foregroundStyle(Theme.textSecondary)
-                                    .lineLimit(1)
-                                Spacer(minLength: 4)
-                                Text(r.reason)
-                                    .font(.casa(11))
-                                    .foregroundStyle(.red.opacity(0.7))
-                                    .lineLimit(1)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    } label: {
-                        Text("\(results.rejected.count) rejected")
-                            .font(.casa(12))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .padding(.horizontal, Metrics.screenPadding)
-                    .focusableOnTV()
+                    rejectedSection
                 }
             }
             .padding(Metrics.screenPadding)
@@ -152,6 +130,60 @@ struct StreamSourcesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .focusableOnTV()
+    }
+
+    // MARK: - Rejected streams section
+
+    @ViewBuilder
+    private var rejectedSection: some View {
+        #if os(tvOS)
+        // DisclosureGroup is unavailable on tvOS — show a plain collapsed summary row.
+        VStack(alignment: .leading, spacing: Metrics.s(4)) {
+            Text("\(results.rejected.count) rejected streams")
+                .font(.casa(12))
+                .foregroundStyle(Theme.textSecondary)
+            ForEach(results.rejected.indices, id: \.self) { i in
+                let r = results.rejected[i]
+                HStack {
+                    Text(r.candidate.filename ?? r.candidate.id)
+                        .font(.casa(11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(r.reason)
+                        .font(.casa(11))
+                        .foregroundStyle(.red.opacity(0.7))
+                        .lineLimit(1)
+                }
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(.horizontal, Metrics.screenPadding)
+        .focusableOnTV()
+        #else
+        DisclosureGroup {
+            ForEach(results.rejected.indices, id: \.self) { i in
+                let r = results.rejected[i]
+                HStack {
+                    Text(r.candidate.filename ?? r.candidate.id)
+                        .font(.casa(11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Text(r.reason)
+                        .font(.casa(11))
+                        .foregroundStyle(.red.opacity(0.7))
+                        .lineLimit(1)
+                }
+                .padding(.vertical, 2)
+            }
+        } label: {
+            Text("\(results.rejected.count) rejected")
+                .font(.casa(12))
+                .foregroundStyle(Theme.textSecondary)
+        }
+        .padding(.horizontal, Metrics.screenPadding)
+        #endif
     }
 
     // MARK: - Aggregator
