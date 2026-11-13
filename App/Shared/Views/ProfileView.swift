@@ -157,7 +157,10 @@ private struct AddProfileSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var isKids = false
-    @State private var hue: Double = Double.random(in: 0..<360)
+    @State private var hue: Double = Self.hues.randomElement() ?? 30
+
+    private static let hues: [Double] = [0, 30, 55, 140, 190, 220, 270, 320]
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     var body: some View {
         NavigationStack {
@@ -165,16 +168,29 @@ private struct AddProfileSheet: View {
                 Section("Name") {
                     TextField("Profile name", text: $name)
                 }
+                Section("Avatar colour") {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Metrics.s(10)) {
+                            ForEach(Self.hues, id: \.self) { option in
+                                Button { hue = option } label: {
+                                    AvatarView(text: trimmedName.isEmpty ? "?" : String(trimmedName.prefix(1)).uppercased(),
+                                               hue: option, size: Metrics.s(40))
+                                        .overlay(Circle().stroke(hue == option ? Theme.accent : .clear,
+                                                                 lineWidth: Metrics.s(3)).padding(-Metrics.s(3)))
+                                        .padding(Metrics.s(4))
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Colour \(Int(option))")
+                            }
+                        }
+                    }
+                }
                 Section {
                     Toggle("Kids profile", isOn: $isKids)
-                    HStack {
-                        Text("Avatar colour")
-                        Spacer()
-                        AvatarView(text: String(name.prefix(1).uppercased()).isEmpty ? "?" : String(name.prefix(1).uppercased()),
-                                   hue: hue, size: Metrics.s(36))
-                        Slider(value: $hue, in: 0...359)
-                            .frame(maxWidth: Metrics.s(140))
-                    }
+                }
+                Section {
+                    Button("Add Profile", action: add)
+                        .disabled(trimmedName.isEmpty)
                 }
             }
             .navigationTitle("New Profile")
@@ -184,18 +200,15 @@ private struct AddProfileSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        onAdd(trimmed, hue, isKids)
-                        dismiss()
-                    }
-                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
             }
             #endif
         }
+    }
+
+    private func add() {
+        guard !trimmedName.isEmpty else { return }
+        onAdd(trimmedName, hue, isKids)
+        dismiss()
     }
 }
 
