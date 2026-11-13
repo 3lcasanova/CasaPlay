@@ -59,6 +59,24 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     public var fetchedAt: Date
     public var bingeGroup: String?
 
+    public init(id: String, providerID: String, providerName: String,
+                providerRole: ProviderRole, providerPriority: Int,
+                location: Location, label: String, filename: String?,
+                advertised: AdvertisedQuality, fetchedAt: Date,
+                bingeGroup: String? = nil) {
+        self.id = id
+        self.providerID = providerID
+        self.providerName = providerName
+        self.providerRole = providerRole
+        self.providerPriority = providerPriority
+        self.location = location
+        self.label = label
+        self.filename = filename
+        self.advertised = advertised
+        self.fetchedAt = fetchedAt
+        self.bingeGroup = bingeGroup
+    }
+
     /// Provider links often expire; re-resolve before playing after this long.
     public func isProbablyExpired(now: Date = Date(), after: TimeInterval = 20 * 60) -> Bool {
         if case .http = location { return now.timeIntervalSince(fetchedAt) > after }

@@ -25,6 +25,7 @@ struct TorrentStreamProvider: StreamProvider {
 
     private let sources: [any TorrentSourceProvider]
 
+    @MainActor
     init(center: TorrentCenter, priority: Int = 500) {
         self.sources = center.providers
         self.priority = priority
