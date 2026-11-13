@@ -14,3 +14,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# API keys. Keep them out of git; see Config/Secrets.example.xcconfig.
+Config/Secrets.xcconfig

@@ -4,7 +4,7 @@ import SwiftUI
 import CasaPlayKit
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case home, movies, favorites, sources, profile
+    case home, movies, favorites, torrents, sources, profile
 
     var id: String { rawValue }
 
@@ -13,6 +13,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .home: return "Home"
         case .movies: return "Movies"
         case .favorites: return "Favorites"
+        case .torrents: return "Torrents"
         case .sources: return "Sources"
         case .profile: return "Profile"
         }
@@ -23,6 +24,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .home: return "house"
         case .movies: return "film"
         case .favorites: return "heart"
+        case .torrents: return "arrow.down.circle"
         case .sources: return "externaldrive"
         case .profile: return "person.crop.circle"
         }
@@ -43,8 +45,24 @@ enum ServiceKeys {
     static let openSubtitlesToken = "openSubtitlesToken"
     static let openSubtitlesUser = "openSubtitlesUsername"
 
+    /// The key entered in Online services, or else the one built in from Config/Secrets.xcconfig.
     static func value(_ key: String) -> String {
-        (UserDefaults.standard.string(forKey: key) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let entered = (UserDefaults.standard.string(forKey: key) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return entered.isEmpty ? builtIn(key) : entered
+    }
+
+    /// Keys copied into Info.plist at build time. Empty when Secrets.xcconfig is missing.
+    static func builtIn(_ key: String) -> String {
+        let plistKey: String
+        switch key {
+        case omdb: plistKey = "OMDbAPIKey"
+        case openSubtitles: plistKey = "OpenSubtitlesAPIKey"
+        default: return ""
+        }
+        let value = (Bundle.main.object(forInfoDictionaryKey: plistKey) as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // An unset build setting can arrive as the literal "$(NAME)".
+        return value.hasPrefix("$(") ? "" : value
     }
 }
 

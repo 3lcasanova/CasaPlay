@@ -63,6 +63,10 @@ struct PlayerScreen: View {
                 )
             }
 
+            if let url = item.streamURL, let parsed = TorrentResourceLoader.parse(url) {
+                TorrentPlaybackStatus(hash: parsed.0)
+            }
+
             #if !os(tvOS)
             VStack {
                 HStack {
@@ -162,7 +166,17 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
 
-        let playerItem = AVPlayerItem(url: url)
+        let playerItem: AVPlayerItem
+        if url.scheme == TorrentResourceLoader.scheme {
+            // Torrent: AVPlayer reads byte ranges through CasaPlay's resource loader.
+            let asset = AVURLAsset(url: url)
+            let loader = TorrentResourceLoader()
+            asset.resourceLoader.setDelegate(loader, queue: loader.queue)
+            context.coordinator.torrentLoader = loader  // the asset only keeps a weak reference
+            playerItem = AVPlayerItem(asset: asset)
+        } else {
+            playerItem = AVPlayerItem(url: url)
+        }
 
         let titleMetadata = AVMutableMetadataItem()
         titleMetadata.identifier = .commonIdentifierTitle
@@ -260,6 +274,7 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
     final class Coordinator {
         var onProgress: (TimeInterval) -> Void
         let overlay = SubtitleOverlayModel()
+        var torrentLoader: TorrentResourceLoader?
         private var player: AVPlayer?
         private var tokens: [Any] = []
 
@@ -291,6 +306,8 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
                 player.removeTimeObserver(token)
             }
             player.pause()
+            torrentLoader?.cancelAll()
+            torrentLoader = nil
             self.player = nil
             self.tokens = []
         }

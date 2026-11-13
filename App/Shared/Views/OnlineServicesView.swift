@@ -23,6 +23,7 @@ struct OnlineServicesView: View {
                 ) {
                     SecureField("OMDb API key", text: $omdbKey)
                         .fieldStyle()
+                    KeySourceNote(entered: omdbKey, builtIn: ServiceKeys.builtIn(ServiceKeys.omdb))
                 }
 
                 ServiceSection(
@@ -31,6 +32,7 @@ struct OnlineServicesView: View {
                 ) {
                     SecureField("OpenSubtitles API key", text: $openSubtitlesKey)
                         .fieldStyle()
+                    KeySourceNote(entered: openSubtitlesKey, builtIn: ServiceKeys.builtIn(ServiceKeys.openSubtitles))
                     TextField("Username (optional)", text: $username)
                         .fieldStyle()
                         #if !os(tvOS)
@@ -45,7 +47,7 @@ struct OnlineServicesView: View {
                             Task { await signIn() }
                         }
                         .buttonStyle(.bordered)
-                        .disabled(openSubtitlesKey.isEmpty || username.isEmpty || password.isEmpty || isSigningIn)
+                        .disabled(ServiceKeys.value(ServiceKeys.openSubtitles).isEmpty || username.isEmpty || password.isEmpty || isSigningIn)
 
                         if !token.isEmpty {
                             Button("Sign out") {
@@ -77,13 +79,29 @@ struct OnlineServicesView: View {
         isSigningIn = true
         defer { isSigningIn = false }
         do {
-            let client = OpenSubtitlesClient(apiKey: openSubtitlesKey)
+            let client = OpenSubtitlesClient(apiKey: ServiceKeys.value(ServiceKeys.openSubtitles))
             token = try await client.login(username: username, password: password)
             password = ""
             status = "Signed in as \(username)."
         } catch {
             status = error.localizedDescription
         }
+    }
+}
+
+/// Says which key is in use: the one typed here, the built-in one, or none.
+private struct KeySourceNote: View {
+    let entered: String
+    let builtIn: String
+
+    var body: some View {
+        Text(
+            !entered.trimmingCharacters(in: .whitespaces).isEmpty ? "Using the key entered here."
+            : builtIn.isEmpty ? "No key yet. Paste one above."
+            : "Using the built-in key. Paste another above to replace it."
+        )
+        .font(.casa(12))
+        .foregroundStyle(Theme.textSecondary)
     }
 }
 

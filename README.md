@@ -35,6 +35,26 @@ This is Phase 0 and the start of Phase 1 from the design canvas.
 - Compatibility engine (VLCKit or FFmpeg)
 - iCloud sync, per-profile watch history
 
+## BitTorrent (experimental)
+
+The **Torrents** tab adds magnet links and `.torrent` files, fetches the metadata, lists the files, and streams a chosen MP4/MOV/M4V while it downloads. Seeking jumps the download to the new position.
+
+- **Engine:** a small Swift BitTorrent v1 client in `CasaPlayKit/Torrent` (BEP 3 peers, BEP 9/10 metadata for magnets, BEP 19 HTTPS web seeds, BEP 23 HTTP trackers). Every piece is SHA-1 checked before it is stored or played. Peer connections use Apple's Network framework.
+- **Player:** `AVAssetResourceLoader` serves byte ranges from verified pieces (`App/Shared/Player/TorrentResourceLoader.swift`). Missing ranges wait while those pieces are fetched first, so AVPlayer shows its normal buffering state.
+- **Sources** are separate from transfers: Internet Archive search (public-domain and Creative Commons films only) and RSS feeds the user adds. Sources only hand over magnet links or `.torrent` files.
+- **Storage:** one sparse file per torrent, named by info-hash, inside CasaPlay's container. Names from torrents are never used as paths, and downloaded files are never opened or executed. Apple TV uses Caches (tvOS may purge it); iPhone and iPad use Application Support, excluded from backup. There is a cache limit and a free-space reserve.
+- **Privacy:** trackers and peers see the device's IP address. Uploading while downloading is on (100 KB/s) and can be turned off; seeding after download is off. There is no listening port.
+- **Background:** iOS, iPadOS and tvOS suspend apps, so transfers stop in the background and resume when CasaPlay is open again.
+- **Not yet:** DHT, peer exchange, UDP trackers, uTP, BitTorrent v2, MKV/AVI playback (the "compatibility engine").
+- **App Store:** Apple's guideline 5.2.3 forbids apps that facilitate illegal file sharing or download media from third-party sources without authorization. Torrent clients have historically been rejected, so distribution through the App Store is not assured even for lawful use. Development builds, TestFlight review and (for iOS/iPadOS in the EU) alternative distribution are separate questions.
+
+Live check against an openly licensed torrent (Big Buck Bunny, CC BY 3.0):
+
+```
+cd Packages/CasaPlayKit
+CASAPLAY_LIVE_TORRENT=1 swift test --filter LiveTorrentTests
+```
+
 ## Build status
 
 GitHub Actions builds every push on a Mac (`.github/workflows/build.yml`):
@@ -51,6 +71,16 @@ You need a Mac with Xcode 15 or newer.
 3. Open `CasaPlay.xcodeproj`.
 4. Pick the **CasaPlay-tvOS** or **CasaPlay-iOS** scheme and a simulator.
 5. For a real device, set your Team under Signing & Capabilities. The bundle ID `com.casanova.casaplay` is a placeholder; change `bundleIdPrefix` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` if you want another.
+
+### API keys
+
+IMDb ratings (OMDb) and OpenSubtitles need API keys. Put them in `Config/Secrets.xcconfig`, which git ignores, so the keys never reach GitHub:
+
+1. Copy `Config/Secrets.example.xcconfig` to `Config/Secrets.xcconfig`.
+2. Fill in `OMDB_API_KEY` and `OPENSUBTITLES_API_KEY`.
+3. Run `xcodegen generate` again and build.
+
+The build copies the keys into the app. Keys typed in Profile › Online services take priority. Without the file the app still builds and asks for keys there.
 
 Run the package tests without Xcode's UI:
 

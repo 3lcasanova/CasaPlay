@@ -10,6 +10,7 @@ struct CasaPlayApp: App {
         WindowGroup {
             RootView()
                 .environment(appState)
+                .environment(TorrentCenter.shared)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

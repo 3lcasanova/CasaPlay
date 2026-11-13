@@ -14,6 +14,10 @@ options:
     iOS: "17.0"
     tvOS: "17.0"
 
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -47,6 +51,26 @@ targets:
         CFBundleDisplayName: CasaPlay
         NSHumanReadableCopyright: "Designed by 𝐂𝓪sΔηⓞשα"
         UILaunchScreen: {}
+        CFBundleURLTypes:
+          - CFBundleURLName: com.casanova.casaplay.magnet
+            CFBundleURLSchemes:
+              - magnet
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: BitTorrent file
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - org.bittorrent.torrent
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.bittorrent.torrent
+            UTTypeDescription: BitTorrent file
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - torrent
+              public.mime-type:
+                - application/x-bittorrent
+        LSSupportsOpeningDocumentsInPlace: false
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -63,6 +87,8 @@ targets:
           - _http._tcp
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        OMDbAPIKey: $(OMDB_API_KEY)
+        OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
 
   CasaPlay-tvOS:
     type: application
@@ -89,3 +115,5 @@ targets:
           - _http._tcp
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        OMDbAPIKey: $(OMDB_API_KEY)
+        OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
