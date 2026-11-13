@@ -28,9 +28,12 @@ This is Phase 0 and the start of Phase 1 from the design canvas.
 - Compatibility engine (VLCKit or FFmpeg)
 - iCloud sync, per-profile watch history
 
-## This code has not been compiled
+## Build status
 
-It was written without a Swift compiler available. Expect a few small fixes on the first build (a missing import, a modifier that differs on tvOS). Send the Xcode error text and they are quick to fix.
+GitHub Actions builds every push on a Mac (`.github/workflows/build.yml`):
+- **CasaPlay-iOS** (iPhone and iPad) for the iOS Simulator
+- **CasaPlay-tvOS** (Apple TV) for the tvOS Simulator
+- the CasaPlayKit unit tests
 
 ## Build it
 
@@ -70,6 +73,6 @@ Packages/CasaPlayKit/        models, parsers, subtitles, playback router, tests
 
 ## Before App Store
 
-- Add an app icon, and for tvOS the layered icon and Top Shelf images. None exist yet.
+- The iPhone and iPad app icon exists (`AppIcon`). Apple TV still needs its layered icon and Top Shelf images.
 - Check the licence of any playback library you add. VLCKit is LGPL.
 - TMDB requires its attribution and logo. OpenSubtitles needs an API key.
