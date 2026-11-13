@@ -25,6 +25,13 @@ struct ProfileView: View {
                                 }
                             }
                             .posterButtonStyle()
+                            .contextMenu {
+                                if app.profiles.count > 1 {
+                                    Button("Delete \(profile.name)", systemImage: "trash", role: .destructive) {
+                                        app.deleteProfile(id: profile.id)
+                                    }
+                                }
+                            }
                         }
 
                         // Add profile button
