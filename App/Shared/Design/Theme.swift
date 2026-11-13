@@ -95,6 +95,38 @@ extension View {
         #endif
     }
 
+    /// Full-width list rows. On Apple TV the system focus style paints a white platter under
+    /// light text, which made rows unreadable; this keeps the dark card and adds an accent ring.
+    @ViewBuilder
+    func cardRowButtonStyle() -> some View {
+        #if os(tvOS)
+        self.buttonStyle(CardRowButtonStyle())
+        #else
+        self.buttonStyle(.plain)
+        #endif
+    }
+
+    /// A sheet on iPhone and iPad; full screen on Apple TV, where sheets are a narrow card.
+    @ViewBuilder
+    func adaptiveSheet<Content: View>(isPresented: Binding<Bool>,
+                                      @ViewBuilder content: @escaping () -> Content) -> some View {
+        #if os(tvOS)
+        self.fullScreenCover(isPresented: isPresented, content: content)
+        #else
+        self.sheet(isPresented: isPresented, content: content)
+        #endif
+    }
+
+    @ViewBuilder
+    func adaptiveSheet<Item: Identifiable, Content: View>(item: Binding<Item?>,
+                                                          @ViewBuilder content: @escaping (Item) -> Content) -> some View {
+        #if os(tvOS)
+        self.fullScreenCover(item: item, content: content)
+        #else
+        self.sheet(item: item, content: content)
+        #endif
+    }
+
     /// Poster-style buttons: plain on iPhone and iPad, the lift-and-glow focus effect on Apple TV.
     @ViewBuilder
     func posterButtonStyle() -> some View {
@@ -105,3 +137,31 @@ extension View {
         #endif
     }
 }
+
+#if os(tvOS)
+struct CardRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        CardRowBody(configuration: configuration)
+    }
+
+    private struct CardRowBody: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            configuration.label
+                .background(
+                    RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
+                        .fill(isFocused ? Theme.surfaceStrong : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
+                        .strokeBorder(isFocused ? Theme.accent : Color.clear, lineWidth: 4)
+                )
+                .scaleEffect(configuration.isPressed ? 0.98 : (isFocused ? 1.02 : 1))
+                .shadow(color: .black.opacity(isFocused ? 0.5 : 0), radius: 18, y: 10)
+                .animation(.easeOut(duration: 0.15), value: isFocused)
+        }
+    }
+}
+#endif

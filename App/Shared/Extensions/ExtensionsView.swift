@@ -567,7 +567,7 @@ private struct QualityModeRow: View {
             .background(selected ? Theme.accent.opacity(0.12) : Theme.surface,
                         in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .cardRowButtonStyle()
     }
 }
 

@@ -50,7 +50,7 @@ struct ServersView: View {
                         .padding(Metrics.s(14))
                         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius))
                 }
-                .buttonStyle(.plain)
+                .cardRowButtonStyle()
                 #endif
 
                 ForEach(center.servers) { server in

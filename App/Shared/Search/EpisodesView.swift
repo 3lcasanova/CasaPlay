@@ -45,7 +45,7 @@ struct EpisodesView: View {
             #endif
             .safeAreaInset(edge: .top) { seasonPicker }
         }
-        .sheet(item: $streamingEpisode) { target in
+        .adaptiveSheet(item: $streamingEpisode) { target in
             StreamSourcesView(request: target.request, libraryItemID: target.episodeID)
         }
         .task(id: selectedSeason) { await loadSeason() }
@@ -199,7 +199,7 @@ private struct EpisodeRow: View {
             .padding(.horizontal, Metrics.screenPadding)
             .padding(.vertical, Metrics.s(12))
         }
-        .buttonStyle(.plain)
+        .cardRowButtonStyle()
     }
 
     @ViewBuilder

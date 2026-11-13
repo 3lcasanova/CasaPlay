@@ -54,7 +54,7 @@ struct TorrentsView: View {
                             #if os(tvOS)
                             .buttonStyle(.bordered)
                             #else
-                            .buttonStyle(.plain)
+                            .cardRowButtonStyle()
                             #endif
                         }
                     }

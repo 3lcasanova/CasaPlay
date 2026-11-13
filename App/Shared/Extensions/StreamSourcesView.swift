@@ -371,6 +371,7 @@ private struct StreamCandidateRow: View {
                     Text(verbatim: candidate.label.isEmpty ? candidate.filename ?? "Stream" : candidate.label)
                         .font(.casa(14, weight: .semibold))
                         .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(Platform.isTV ? 3 : nil)
                         .fixedSize(horizontal: false, vertical: true)
                     if let filename = candidate.filename, !candidate.label.isEmpty,
                        !candidate.label.localizedCaseInsensitiveContains(filename) {
@@ -420,7 +421,7 @@ private struct StreamCandidateRow: View {
                     .strokeBorder(isBest ? Theme.accent.opacity(0.4) : Color.clear, lineWidth: 1)
             )
         }
-        .buttonStyle(.plain)
+        .cardRowButtonStyle()
     }
 
     @ViewBuilder

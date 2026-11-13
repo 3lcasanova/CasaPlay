@@ -70,12 +70,12 @@ private struct DetailContent: View {
         .sheet(isPresented: $showingSubtitleSearch) {
             SubtitleSearchView(item: item)
         }
-        .sheet(isPresented: $showingStreams) {
+        .adaptiveSheet(isPresented: $showingStreams) {
             if let request = movieRequest {
                 StreamSourcesView(request: request, libraryItemID: item.id)
             }
         }
-        .sheet(isPresented: $showingEpisodes) {
+        .adaptiveSheet(isPresented: $showingEpisodes) {
             if item.tmdbShowID != nil {
                 EpisodesView(show: item,
                              totalSeasons: episodeSeasonCount)
