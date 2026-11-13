@@ -1,0 +1,52 @@
+# CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
+# Builds the iOS/iPadOS and tvOS apps for the simulator and runs the CasaPlayKit tests.
+
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  package-tests:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test CasaPlayKit
+        working-directory: Packages/CasaPlayKit
+        run: swift test
+
+  app:
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scheme: CasaPlay-iOS
+            destination: generic/platform=iOS Simulator
+          - scheme: CasaPlay-tvOS
+            destination: generic/platform=tvOS Simulator
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        run: xcodegen generate
+      - name: Build ${{ matrix.scheme }}
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project CasaPlay.xcodeproj \
+            -scheme "${{ matrix.scheme }}" \
+            -destination "${{ matrix.destination }}" \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ matrix.scheme }}
+          path: build.log
