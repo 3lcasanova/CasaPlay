@@ -41,6 +41,12 @@ jobs:
         run: brew install xcodegen
       - name: Generate project
         run: xcodegen generate
+      - name: Upload generated Xcode project
+        if: matrix.scheme == 'CasaPlay-iOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: CasaPlay-xcodeproj
+          path: CasaPlay.xcodeproj
       - name: Build ${{ matrix.scheme }}
         run: |
           set -o pipefail
