@@ -104,7 +104,7 @@ struct SearchView: View {
             } else if resultsEmpty && !query.isEmpty {
                 ContentUnavailableView("No Results",
                     systemImage: "magnifyingglass",
-                    description: Text("No matches found for "\(query)""))
+                    description: Text("No matches found for \"\(query)\""))
             } else if query.isEmpty {
                 emptyPrompt
             } else {
