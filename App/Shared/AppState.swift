@@ -169,10 +169,11 @@ final class AppState {
     }
 
     /// Plays a chosen stream as a library title so progress is saved to it. The URL is never persisted.
-    func play(libraryItemID id: MediaItem.ID, streamURL: URL, headers: [String: String]?) -> Bool {
+    func play(libraryItemID id: MediaItem.ID, streamURL: URL, headers: [String: String]?, file: MediaFileInfo) -> Bool {
         guard var copy = item(id: id) else { return false }
         copy.streamURL = streamURL
         copy.streamHeaders = headers
+        copy.file = file
         playing = copy
         return true
     }

@@ -374,6 +374,7 @@ struct TorrentDetailView: View {
     @Environment(AppState.self) private var app
     @Environment(\.dismiss) private var dismiss
     let hash: InfoHash
+    var libraryItemID: UUID? = nil
     @State private var files: [TorrentFile] = []
     @State private var showAllFiles = false
     @State private var confirmingRemove = false
@@ -502,9 +503,12 @@ struct TorrentDetailView: View {
     private func play(_ file: TorrentFile) async {
         guard file.isVideo else { return }
         guard await center.select(hash, file: file.index) else { return }
-        if let item = center.mediaItem(hash: hash, file: file) {
-            app.play(item)
+        guard let item = center.mediaItem(hash: hash, file: file) else { return }
+        if let libraryItemID, let url = item.streamURL,
+           app.play(libraryItemID: libraryItemID, streamURL: url, headers: nil, file: item.file) {
+            return
         }
+        app.play(item)
     }
 }
 

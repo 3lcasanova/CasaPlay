@@ -87,7 +87,7 @@ struct StreamSourcesView: View {
             get: { app.pendingTorrentHash.map(IdentifiableInfoHash.init) },
             set: { app.pendingTorrentHash = $0?.hash }
         )) { wrapper in
-            TorrentDetailView(hash: wrapper.hash)
+            TorrentDetailView(hash: wrapper.hash, libraryItemID: libraryItemID)
         }
         .overlay {
             if isAddingTorrent {
@@ -240,21 +240,22 @@ struct StreamSourcesView: View {
         case .http(let url, let headers):
             // Direct HTTP/HLS stream — hand off to AVFoundation player.
             let streamHeaders = headers.isEmpty ? nil : headers
+            let ext = url.pathExtension.lowercased()
+            let container: MediaContainer = ext == "m3u8" ? .hls : (ext == "mp4" ? .mp4 : .other)
+            let file = MediaFileInfo(container: container, videoCodec: .hevc)
             if let libraryItemID,
-               app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders) {
+               app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders, file: file) {
                 dismiss()
                 return
             }
-            let ext = url.pathExtension.lowercased()
-            let container: MediaContainer = ext == "m3u8" ? .hls : (ext == "mp4" ? .mp4 : .other)
             let item = MediaItem(
                 id: UUID(),
                 title: request.title,
                 runtimeSeconds: 0,
-                file: MediaFileInfo(container: container, videoCodec: .hevc),
+                file: file,
                 imdbID: request.kind == .movie ? request.id : nil,
                 streamURL: url,
-                streamHeaders: headers.isEmpty ? nil : headers
+                streamHeaders: streamHeaders
             )
             app.play(item)
             dismiss()
