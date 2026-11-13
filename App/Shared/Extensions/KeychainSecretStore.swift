@@ -39,7 +39,7 @@ final class KeychainSecretStore: SecretStore, @unchecked Sendable {
         }
     }
 
-    func delete(_ key: String) {
+    func remove(_ key: String) {
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
