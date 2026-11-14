@@ -31,23 +31,32 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - scheme: CasaPlay-iOS
+          - name: CasaPlay-iOS
+            scheme: CasaPlay-iOS
             destination: generic/platform=iOS Simulator
-          - scheme: CasaPlay-tvOS
+            spec: project.yml
+          - name: CasaPlay-tvOS
+            scheme: CasaPlay-tvOS
             destination: generic/platform=tvOS Simulator
+            spec: project.yml
+          # The Apple TV Top Shelf extension, built into the tvOS app. Unsigned, so it needs no App ID.
+          - name: CasaPlay-tvOS-TopShelf
+            scheme: CasaPlay-tvOS
+            destination: generic/platform=tvOS Simulator
+            spec: project-topshelf.yml
     steps:
       - uses: actions/checkout@v4
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate project
-        run: xcodegen generate
+        run: xcodegen generate --spec ${{ matrix.spec }}
       - name: Upload generated Xcode project
         if: matrix.scheme == 'CasaPlay-iOS'
         uses: actions/upload-artifact@v4
         with:
           name: CasaPlay-xcodeproj
           path: CasaPlay.xcodeproj
-      - name: Build ${{ matrix.scheme }}
+      - name: Build ${{ matrix.name }}
         run: |
           set -o pipefail
           xcodebuild build \
@@ -62,5 +71,5 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log-${{ matrix.scheme }}
+          name: build-log-${{ matrix.name }}
           path: build.log
