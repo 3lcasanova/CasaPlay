@@ -41,7 +41,11 @@ public struct AVFoundationProbe: StreamProbe {
         } catch {
             let ns = error as NSError
             if ns.domain == NSURLErrorDomain, [NSURLErrorUserAuthenticationRequired, NSURLErrorNoPermissionsToReadFile].contains(ns.code) {
-                return .unplayable("The link was refused; it may have expired.")
+                // Only Apple's request was refused. With VLC bundled, keep the stream and let VLC try it:
+                // marking it "can't play" hid every stream from an add-on whose server turns Apple's player away.
+                return compatibilityPlays
+                    ? .unreadable(StreamCandidate.refusedByAppleNote)
+                    : .unplayable("The link was refused; it may have expired.")
             }
             // A network failure (404, no route) is a dead link. Anything else means AVFoundation
             // doesn't understand the file, which VLC may.

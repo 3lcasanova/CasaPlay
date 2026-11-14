@@ -381,7 +381,11 @@ struct StreamSourcesView: View {
             let ext = url.pathExtension.lowercased()
             // mp4, m4v, mov and m3u8 go to Apple's player. mkv, avi, webm, ts and anything
             // unrecognised go to VLC, which opens whatever the link turns out to be.
-            let container = MediaContainer(fileExtension: ext)
+            var container = MediaContainer(fileExtension: ext)
+            // Apple's player was already refused on this link, so it would be refused again: go to VLC.
+            if case .unreadable(let note) = candidate.verification, note == StreamCandidate.refusedByAppleNote {
+                container = .other
+            }
             let file = MediaFileInfo(container: container, videoCodec: .hevc)
             if let libraryItemID,
                app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders, file: file) {

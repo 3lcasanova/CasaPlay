@@ -59,6 +59,10 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     /// Shown for a stream Apple's player can't open when the compatibility player (VLC) can.
     public static let compatibilityNote = "Plays in CasaPlay's compatibility player; checked once playback starts."
 
+    /// Shown when Apple's loader was turned away (401/403) but the compatibility player (VLC) has not tried yet.
+    /// Servers often refuse Apple's requests while accepting VLC's, so the stream is kept and played in VLC.
+    public static let refusedByAppleNote = "Apple's player was refused; plays in CasaPlay's compatibility player instead."
+
     /// For a "Where to watch" entry: the service ("Amazon Prime Video") and the offer
     /// ("Subscription, Rent, Buy"), taken from the two lines of the add-on's label.
     public var externalService: (name: String, detail: String?)? {
