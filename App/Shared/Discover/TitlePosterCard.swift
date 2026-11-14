@@ -33,13 +33,11 @@ struct TitlePosterCard: View {
     @ViewBuilder
     private var posterImage: some View {
         if let path = posterPath, let url = TMDBClient.posterURL(path) {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fill)
                 case .failure, .empty:
-                    fallbackArt
-                @unknown default:
                     fallbackArt
                 }
             }

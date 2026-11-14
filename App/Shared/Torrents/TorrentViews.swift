@@ -598,31 +598,42 @@ struct TorrentPrivacyNote: View {
 
 // MARK: - Player overlay
 
-/// Small status badge over the player while a torrent stream waits for data.
+/// The buffering status in the player, a frosted capsule that sits in the bottom row while a torrent stream
+/// waits for data. It draws nothing when there is nothing to say.
 struct TorrentPlaybackStatus: View {
     @Environment(TorrentCenter.self) private var center
     let hash: InfoHash
 
     var body: some View {
         let stats = center.summary(hash)?.stats
-        VStack {
-            if let stats, stats.isBuffering || stats.lastError != nil {
-                HStack(spacing: 8) {
-                    if stats.isBuffering { ProgressView() }
-                    Text(stats.isBuffering
-                         ? "Buffering · \(stats.connectedPeers) peers · \(TorrentFormat.rate(stats.downloadRate))"
-                         : (stats.lastError ?? ""))
+        if let stats, stats.isBuffering || stats.lastError != nil {
+            HStack(spacing: Metrics.s(10)) {
+                if stats.isBuffering {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Color.white)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Buffering")
+                            .font(.casa(13, weight: .semibold))
+                            .foregroundStyle(Color.white)
+                        Text("\(stats.connectedPeers) peers · \(TorrentFormat.rate(stats.downloadRate))")
+                            .font(.casa(11, weight: .medium))
+                            .foregroundStyle(Color.white.opacity(0.7))
+                    }
+                } else {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(Theme.accent)
+                    Text(stats.lastError ?? "")
                         .font(.casa(12, weight: .semibold))
                         .foregroundStyle(Color.white)
                         .lineLimit(2)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.65), in: Capsule())
-                .padding(.top, Platform.isTV ? 60 : 70)
             }
-            Spacer()
+            .padding(.horizontal, Metrics.s(16))
+            .padding(.vertical, Metrics.s(10))
+            .frame(maxWidth: Metrics.s(340), alignment: .leading)
+            .playerPill()
+            .allowsHitTesting(false)
         }
-        .allowsHitTesting(false)
     }
 }

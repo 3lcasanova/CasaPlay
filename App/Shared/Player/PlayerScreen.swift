@@ -61,38 +61,72 @@ struct PlayerScreen: View {
                 )
             }
 
-            if let url = item.streamURL, let parsed = TorrentResourceLoader.parse(url) {
-                TorrentPlaybackStatus(hash: parsed.0)
-            }
+            overlayLayout(usesVLC: usesVLC)
+        }
+    }
 
+    // MARK: Overlay
+
+    /// Close button at the top. At the bottom, one row: what is happening (buffering, subtitle making) on the
+    /// left and the subtitle button on the right, sitting just above where the player's own controls appear.
+    private func overlayLayout(usesVLC: Bool) -> some View {
+        VStack(spacing: 0) {
             #if !os(tvOS)
-            VStack {
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 30))
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(Color.white, Color.black.opacity(0.55))
-                    }
-                    .accessibilityLabel("Close player")
-                    NihonSubStatusPill(itemID: item.id)
-                    Spacer()
-                    // The compatibility player has its own subtitle menu.
-                    if !usesVLC { subtitleMenu }
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    PlayerGlassIcon(systemName: "xmark", size: 42)
                 }
-                .padding()
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close player")
                 Spacer()
             }
+            .padding()
             #endif
+
+            Spacer()
+
+            HStack(alignment: .bottom, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if let url = item.streamURL, let parsed = TorrentResourceLoader.parse(url) {
+                        TorrentPlaybackStatus(hash: parsed.0)
+                    }
+                    #if !os(tvOS)
+                    NihonSubStatusPill(itemID: item.id)
+                    #endif
+                }
+                Spacer(minLength: 12)
+                #if !os(tvOS)
+                // The compatibility player has its own subtitle menu.
+                if !usesVLC { subtitleMenu }
+                #endif
+            }
+            .padding(.horizontal, Platform.isTV ? 80 : 20)
+            .padding(.bottom, bottomInset(usesVLC: usesVLC))
         }
+    }
+
+    /// How far above the bottom edge the row sits, so it clears the player's controls.
+    private func bottomInset(usesVLC: Bool) -> CGFloat {
+        #if os(tvOS)
+        return usesVLC ? 300 : 240
+        #else
+        return usesVLC ? 190 : 84
+        #endif
     }
 
     #if !os(tvOS)
     /// iPhone and iPad: CasaPlay's subtitle tracks. Subtitles inside the video stay in the player's own menu.
-    private var subtitleMenu: some View {
+    @ViewBuilder private var subtitleMenu: some View {
         let options = app.subtitleOptions(for: item.id)
+        // Hidden until there is something to pick, unless NihonSub can make subtitles.
+        if !options.isEmpty || app.nihonSubClient != nil {
+            subtitleMenuButton(options: options)
+        }
+    }
+
+    private func subtitleMenuButton(options: [LoadedSubtitle]) -> some View {
         let active = app.activeSubtitle(for: item.id)
         return Menu {
             Button {
@@ -113,15 +147,11 @@ struct PlayerScreen: View {
             }
             nihonSubMenuItems(app: app, item: item)
         } label: {
-            Image(systemName: active == nil ? "captions.bubble" : "captions.bubble.fill")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color.white)
-                .padding(10)
-                .background(Color.black.opacity(0.55), in: Circle())
+            PlayerGlassIcon(systemName: active == nil ? "captions.bubble" : "captions.bubble.fill",
+                            tint: active == nil ? Color.white : Theme.accent,
+                            size: 46)
         }
         .accessibilityLabel("Subtitles")
-        // Hidden until there is something to pick, unless NihonSub can make subtitles.
-        .opacity(options.isEmpty && app.nihonSubClient == nil ? 0 : 1)
     }
     #endif
 

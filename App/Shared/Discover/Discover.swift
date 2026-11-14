@@ -235,10 +235,18 @@ struct DiscoverShelf: View {
         if !titles.isEmpty {
             #if os(tvOS)
             TVShelf(title: title) { tiles }
+                .task(id: titles.count) { prefetchPosters() }
             #else
             Shelf(title: title, destination: destination) { tiles }
+                .task(id: titles.count) { prefetchPosters() }
             #endif
         }
+    }
+
+    /// Loads the posters of the whole shelf now, so they are ready when they scroll in.
+    private func prefetchPosters() {
+        let urls = titles.compactMap { title in title.posterPath.flatMap { TMDBClient.posterURL($0) } }
+        ImagePipeline.prefetch(urls, maxPixel: 600)
     }
 
     @ViewBuilder
@@ -267,7 +275,7 @@ struct DiscoverHero: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            BackdropImage(path: title.backdropPath ?? title.posterPath, hue: 220)
+            BackdropImage(path: title.backdropPath ?? title.posterPath, hue: 220, alignment: .top)
             LinearGradient(colors: [Color.clear, Theme.background], startPoint: .center, endPoint: .bottom)
 
             VStack(alignment: .leading, spacing: Metrics.s(8)) {
@@ -305,15 +313,20 @@ struct BackdropImage: View {
     let hue: Double
     /// The full-size picture, for something that fills an Apple TV screen.
     var fullSize = false
+    /// Where the picture sits when it is cropped to fit. A big banner uses `.top`, so heads aren't cut off.
+    var alignment: Alignment = .center
 
     var body: some View {
         GeometryReader { geometry in
             let size = geometry.size
             Group {
                 if let path, let url = fullSize ? TMDBClient.originalBackdropURL(path) : TMDBClient.backdropURL(path) {
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImage(url: url, maxPixel: fullSize ? 3200 : 1600) { phase in
                         if let image = phase.image {
-                            image.resizable().scaledToFill()
+                            image
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: size.width, height: size.height, alignment: alignment)
                         } else {
                             ArtView(hue: hue, cornerRadius: 0)
                         }

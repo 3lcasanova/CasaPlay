@@ -31,14 +31,42 @@ enum CasaPlayStorage {
         return dir.appendingPathComponent(filename)
     }
 
+    /// Apple TV only lets an app save files in its Caches folder, so a file that can't be saved in the usual
+    /// place is kept there instead.
+    private static func fallbackURL(_ filename: String) -> URL {
+        let dir = FileManager.default
+            .urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("CasaPlay", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent(filename)
+    }
+
+    /// Saves the bytes in the usual place, or in Caches when that isn't allowed. False when neither works.
+    @discardableResult
+    static func write(_ data: Data, to filename: String) -> Bool {
+        if (try? data.write(to: url(filename), options: .atomic)) != nil { return true }
+        return (try? data.write(to: fallbackURL(filename), options: .atomic)) != nil
+    }
+
+    /// Reads a file from the usual place, or from Caches.
+    static func read(_ filename: String) -> Data? {
+        if let data = try? Data(contentsOf: url(filename)) { return data }
+        return try? Data(contentsOf: fallbackURL(filename))
+    }
+
+    static func remove(_ filename: String) {
+        try? FileManager.default.removeItem(at: url(filename))
+        try? FileManager.default.removeItem(at: fallbackURL(filename))
+    }
+
     static func load<T: Decodable>(_ type: T.Type, from filename: String) -> T? {
-        guard let data = try? Data(contentsOf: url(filename)) else { return nil }
+        guard let data = read(filename) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 
     static func save<T: Encodable>(_ value: T, to filename: String) {
         guard let data = try? JSONEncoder().encode(value) else { return }
-        try? data.write(to: url(filename), options: .atomicWrite)
+        write(data, to: filename)
     }
 }
 

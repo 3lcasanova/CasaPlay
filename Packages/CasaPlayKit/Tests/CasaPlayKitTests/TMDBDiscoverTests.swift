@@ -159,6 +159,34 @@ final class TMDBBrowseTests: XCTestCase {
         XCTAssertEqual(TMDBClient.posterURL("/a.jpg")?.absoluteString, "https://image.tmdb.org/t/p/w500/a.jpg")
     }
 
+    func testTitleLogoPrefersTheBestEnglishPictureAndSkipsSVG() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/movie/5/images"] = HTTPResponse(status: 200, body: Data("""
+        {"logos": [
+          {"file_path": "/fr.png", "iso_639_1": "fr", "vote_average": 9},
+          {"file_path": "/en-low.png", "iso_639_1": "en", "vote_average": 1},
+          {"file_path": "/en-best.png", "iso_639_1": "en", "vote_average": 5},
+          {"file_path": "/en.svg", "iso_639_1": "en", "vote_average": 9}
+        ]}
+        """.utf8))
+        let path = try await makeClient(transport).titleLogoPath(movieID: 5)
+        XCTAssertEqual(path, "/en-best.png")
+        XCTAssertEqual(query(transport.sent.first)["include_image_language"], "en,null")
+    }
+
+    func testTitleLogoFallsBackToOneWithNoLanguageThenToNothing() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/tv/8/images"] = HTTPResponse(status: 200, body: Data("""
+        {"logos": [{"file_path": "/de.png", "iso_639_1": "de"}, {"file_path": "/none.png", "iso_639_1": null}]}
+        """.utf8))
+        XCTAssertEqual(try await makeClient(transport).titleLogoPath(showID: 8), "/none.png")
+
+        transport.routes["/3/tv/9/images"] = HTTPResponse(status: 200, body: Data(#"{"logos": []}"#.utf8))
+        let none = try await makeClient(transport).titleLogoPath(showID: 9)
+        XCTAssertNil(none)
+        XCTAssertEqual(TMDBClient.logoURL("/x.png")?.absoluteString, "https://image.tmdb.org/t/p/w500/x.png")
+    }
+
     func testOriginalBackdropURLUsesTheFullSize() {
         XCTAssertEqual(TMDBClient.originalBackdropURL("/b.jpg")?.absoluteString, "https://image.tmdb.org/t/p/original/b.jpg")
         XCTAssertEqual(TMDBClient.backdropURL("/b.jpg")?.absoluteString, "https://image.tmdb.org/t/p/w1280/b.jpg")

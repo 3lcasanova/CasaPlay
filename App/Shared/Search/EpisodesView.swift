@@ -275,7 +275,7 @@ private struct EpisodeRow: View {
     @ViewBuilder
     private var episodeThumb: some View {
         if let url = episode.imageURL {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
                 default: placeholderThumb

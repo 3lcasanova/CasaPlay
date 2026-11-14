@@ -216,7 +216,7 @@ struct TVBillboard: View {
     var body: some View {
         ZStack(alignment: .bottomLeading) {
             ZStack {
-                BackdropImage(path: slide.tvBackdrop, hue: slide.tvHue, fullSize: true)
+                BackdropImage(path: slide.tvBackdrop, hue: slide.tvHue, fullSize: true, alignment: .top)
                     .id(slide.id)
                     .transition(.opacity)
             }
@@ -387,7 +387,8 @@ struct TVHome: View {
 
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
+                // Lazy: a shelf is built when it comes near the screen, not all twelve at launch.
+                LazyVStack(alignment: .leading, spacing: 6) {
                     if slides.isEmpty {
                         Text("Home")
                             .font(.system(size: 64, weight: .heavy))
@@ -426,6 +427,17 @@ struct TVHome: View {
                 ProgressView().tint(.white)
             }
         }
+        .task(id: slides.count) { prefetchSlides(slides, from: slideIndex) }
+        .onChange(of: slideIndex) { _, now in prefetchSlides(slides, from: now) }
+    }
+
+    /// Loads the next two billboard pictures ahead of time, so the change to the next one doesn't stall.
+    private func prefetchSlides(_ slides: [HeroSlide], from index: Int) {
+        guard !slides.isEmpty else { return }
+        let urls = (1...2).compactMap { step -> URL? in
+            slides[(index + step) % slides.count].tvBackdrop.flatMap { TMDBClient.originalBackdropURL($0) }
+        }
+        ImagePipeline.prefetch(urls, maxPixel: 3200)
     }
 
     // MARK: Shelves
@@ -519,7 +531,7 @@ struct TVHome: View {
 
     // MARK: Glow
 
-    /// Black, with the billboard picture blurred far out so its colours glow behind the shelves.
+    /// Black, with the billboard colours glowing softly behind the shelves.
     @ViewBuilder
     private func glow(_ slides: [HeroSlide]) -> some View {
         ZStack {
@@ -529,9 +541,7 @@ struct TVHome: View {
                                center: .topLeading, startRadius: 40, endRadius: 1100)
             } else {
                 let current = slides[min(slideIndex, slides.count - 1)]
-                BackdropImage(path: current.tvBackdrop, hue: current.tvHue)
-                    .blur(radius: 90)
-                    .opacity(0.42)
+                GlowPicture(path: current.tvBackdrop)
                     .id(current.id)
                     .transition(.opacity)
                     .animation(.easeInOut(duration: 1.0), value: current.id)
@@ -539,6 +549,35 @@ struct TVHome: View {
             }
         }
         .ignoresSafeArea()
+    }
+}
+
+/// A tiny copy of the billboard picture stretched over the whole screen. Stretching a small picture already
+/// turns it into soft colour, so this needs far less work than blurring a full-size one, and the result is
+/// drawn once and kept while the shelves move over it.
+private struct GlowPicture: View {
+    let path: String?
+
+    var body: some View {
+        Color.clear
+            .overlay {
+                if let path, let url = TMDBClient.smallBackdropURL(path) {
+                    CachedAsyncImage(url: url, maxPixel: 96) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .interpolation(.high)
+                                .scaledToFill()
+                        } else {
+                            Color.clear
+                        }
+                    }
+                }
+            }
+            .clipped()
+            .blur(radius: 24)
+            .drawingGroup()
+            .opacity(0.42)
     }
 }
 

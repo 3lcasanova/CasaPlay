@@ -404,10 +404,10 @@ struct NihonSubStatusPill: View {
             }
             .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(Color.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
             .frame(maxWidth: 260, alignment: .leading)
-            .background(Color.black.opacity(0.6), in: Capsule())
+            .playerPill()
             .onTapGesture {
                 if !status.isRunning { app.clearNihonSubStatus(for: itemID) }
             }

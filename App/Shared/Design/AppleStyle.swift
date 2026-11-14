@@ -6,12 +6,33 @@
 
 import SwiftUI
 import CasaPlayKit
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum AppleMetrics {
-    /// A poster in a shelf. Three and a bit fit across an iPhone.
-    static var poster: CGFloat { Platform.isTV ? 250 : 112 }
+    /// True on an iPad.
+    static var isPad: Bool {
+        #if canImport(UIKit)
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #else
+        return false
+        #endif
+    }
+
+    /// A poster in a shelf. Three and a bit fit across an iPhone, seven across an iPad.
+    static var poster: CGFloat { Platform.isTV ? 250 : (isPad ? 148 : 112) }
     /// A wide Continue Watching card.
-    static var wide: CGFloat { Platform.isTV ? 340 : 270 }
+    static var wide: CGFloat { Platform.isTV ? 340 : (isPad ? 260 : 270) }
+    /// A Continue Watching card is 16:9, a little less wide on an iPad.
+    static var wideHeightRatio: CGFloat { Platform.isTV ? 9.0 / 16.0 : (isPad ? 0.7 : 9.0 / 16.0) }
+    /// The space between cards in a shelf.
+    static var gap: CGFloat { Platform.isTV ? 40 : (isPad ? 20 : 14) }
+    /// The left and right margin of shelves and the billboard text.
+    static var edge: CGFloat { Platform.isTV ? 80 : (isPad ? 36 : 20) }
+
+    /// Wide enough for the billboard with the words on the left: an iPad, or an iPhone on its side.
+    static func isWide(_ width: CGFloat) -> Bool { width >= 640 }
 }
 
 // MARK: - Shelf title
@@ -82,7 +103,7 @@ struct ApplePosterCard: View {
     @ViewBuilder private var rankNumber: some View {
         if let rank {
             Text("\(rank)")
-                .font(.system(size: Platform.isTV ? 60 : 32, weight: .heavy, design: .rounded))
+                .font(.system(size: Platform.isTV ? 60 : AppleMetrics.poster * 0.29, weight: .heavy, design: .rounded))
                 .foregroundStyle(.white)
                 .shadow(color: .black.opacity(0.7), radius: 3, y: 1)
                 .padding(.leading, Metrics.s(9))
@@ -101,13 +122,24 @@ struct ContinueCard: View {
 
     var body: some View {
         Color.clear
-            .frame(width: AppleMetrics.wide, height: AppleMetrics.wide * 9 / 16)
+            .frame(width: AppleMetrics.wide, height: AppleMetrics.wide * AppleMetrics.wideHeightRatio)
             .overlay { BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue) }
             .overlay(alignment: .bottom) { caption }
             .clipShape(shape)
             .overlay { shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("\(item.title), \(TimeFormat.timeLeft(item.remainingSeconds))")
+            .accessibilityLabel("\(item.title), \(detailText)")
+    }
+
+    /// "S1, E4 · 56m left" for an episode on an iPad, like the Apple TV app. Everywhere else just the time left.
+    private var detailText: String {
+        let left = TimeFormat.timeLeft(item.remainingSeconds)
+        #if os(tvOS)
+        return left
+        #else
+        guard AppleMetrics.isPad, let season = item.seasonNumber, let episode = item.episodeNumber else { return left }
+        return "S\(season), E\(episode) · \(left)"
+        #endif
     }
 
     private var caption: some View {
@@ -123,7 +155,7 @@ struct ContinueCard: View {
                 ProgressBar(fraction: item.progressFraction)
                     .frame(width: Metrics.s(56))
                     .clipShape(Capsule())
-                Text(TimeFormat.timeLeft(item.remainingSeconds))
+                Text(detailText)
                     .font(.casa(12, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.85))
                     .lineLimit(1)
@@ -242,7 +274,7 @@ struct HeroArt: View {
     var body: some View {
         if preferPoster, let posterPath, let url = TMDBClient.posterURL(posterPath, width: 780) {
             GeometryReader { proxy in
-                AsyncImage(url: url) { phase in
+                CachedAsyncImage(url: url) { phase in
                     if let image = phase.image {
                         image
                             .resizable()
@@ -256,7 +288,7 @@ struct HeroArt: View {
                 .frame(width: proxy.size.width, height: proxy.size.height)
             }
         } else {
-            BackdropImage(path: backdropPath ?? posterPath, hue: hue)
+            BackdropImage(path: backdropPath ?? posterPath, hue: hue, fullSize: !preferPoster, alignment: .top)
         }
     }
 }
@@ -283,14 +315,26 @@ struct HeroSlide: Identifiable {
 #if !os(tvOS)
 
 /// The swipeable billboard at the top of Home. The picture runs edge to edge, behind the status bar.
+/// On a phone it is tall, with the words in the middle. On an iPad it is a 16:9 picture with the words on the left.
 struct HomeHero: View {
     @Environment(AppState.self) private var app
     let slides: [HeroSlide]
     let topInset: CGFloat
+    /// The size of the screen area Home has, which sets how big the billboard is on an iPad.
+    let containerSize: CGSize
     let openOnline: (DiscoverTitle) -> Void
     @State private var index = 0
 
     static let artHeight: CGFloat = 540
+
+    private var wide: Bool { AppleMetrics.isWide(containerSize.width) }
+
+    private var height: CGFloat {
+        if wide {
+            return min(containerSize.width * 9 / 16, containerSize.height * 0.64)
+        }
+        return Self.artHeight + topInset
+    }
 
     private var currentIndex: Int { min(index, max(slides.count - 1, 0)) }
 
@@ -298,7 +342,7 @@ struct HomeHero: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $index) {
                 ForEach(Array(slides.enumerated()), id: \.element.id) { position, slide in
-                    HeroSlideView(slide: slide, openOnline: openOnline)
+                    HeroSlideView(slide: slide, wide: wide, openOnline: openOnline)
                         .tag(position)
                 }
             }
@@ -309,8 +353,10 @@ struct HomeHero: View {
                     .padding(.bottom, 12)
             }
         }
-        .frame(height: Self.artHeight + topInset)
-        .overlay(alignment: .top) { HomeHeader(topInset: topInset) }
+        .frame(height: height)
+        .overlay(alignment: .top) {
+            if !wide { HomeHeader(topInset: topInset) }
+        }
     }
 }
 
@@ -318,8 +364,18 @@ struct HomeHero: View {
 struct HomeHeader: View {
     @Environment(AppState.self) private var app
     let topInset: CGFloat
+    /// On a wide screen the sidebar or tab bar already says where you are, so there is no title.
+    var wide = false
 
     var body: some View {
+        if wide {
+            Color.clear.frame(height: topInset + 64)
+        } else {
+            header
+        }
+    }
+
+    private var header: some View {
         HStack {
             Text("Home")
                 .font(.system(size: 34, weight: .bold))
@@ -345,13 +401,79 @@ struct HomeHeader: View {
 
 private struct HeroSlideView: View {
     @Environment(AppState.self) private var app
-    @Environment(\.horizontalSizeClass) private var sizeClass
     let slide: HeroSlide
+    let wide: Bool
     let openOnline: (DiscoverTitle) -> Void
 
     var body: some View {
+        if wide {
+            wideBody
+        } else {
+            phoneBody
+        }
+    }
+
+    /// iPad: the wide picture with the words on the left, like the Apple TV app. The picture ends in a clean
+    /// edge, and the first shelf starts right under it.
+    private var wideBody: some View {
+        ZStack(alignment: .bottomLeading) {
+            HeroArt(posterPath: posterPath, backdropPath: backdropPath, hue: hue, preferPoster: false)
+            LinearGradient(colors: [Color.black.opacity(0.72), Color.black.opacity(0.35), Color.clear],
+                           startPoint: .leading, endPoint: UnitPoint(x: 0.72, y: 0.5))
+            LinearGradient(colors: [Color.clear, Color.black.opacity(0.5)],
+                           startPoint: UnitPoint(x: 0.5, y: 0.6), endPoint: .bottom)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text(badge)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                TitleLogo(title: title, tmdbID: logoID, isShow: logoIsShow)
+
+                HStack(spacing: 8) {
+                    Text(wideMetaText)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.85))
+                        .lineLimit(1)
+                    if let chip = ratingChip {
+                        InfoBadge(text: chip)
+                    }
+                }
+
+                if !overview.isEmpty {
+                    Text(overview)
+                        .font(.system(size: 16))
+                        .foregroundStyle(Color.white.opacity(0.86))
+                        .lineLimit(3)
+                        .frame(maxWidth: 540, alignment: .leading)
+                }
+
+                HStack(spacing: 12) {
+                    primaryButton
+                    addButton
+                }
+                .padding(.top, 6)
+
+                if let timeLeft {
+                    Text(timeLeft)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.white.opacity(0.6))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AppleMetrics.edge)
+            .padding(.bottom, 44)
+        }
+        .clipped()
+    }
+
+    /// iPhone: the poster, with the words in the middle.
+    private var phoneBody: some View {
         ZStack(alignment: .bottom) {
-            HeroArt(posterPath: posterPath, backdropPath: backdropPath, hue: hue, preferPoster: sizeClass != .regular)
+            HeroArt(posterPath: posterPath, backdropPath: backdropPath, hue: hue, preferPoster: true)
             LinearGradient(colors: [Color.black.opacity(0.55), Color.clear],
                            startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.3))
             LinearGradient(colors: [Color.clear, Theme.background.opacity(0.85), Theme.background],
@@ -441,6 +563,64 @@ private struct HeroSlideView: View {
         }
     }
 
+    /// The small label over the title.
+    private var badge: String {
+        switch slide.source {
+        case .library(let item): return item.canResume ? "Continue Watching" : "From Your Library"
+        case .online(let title): return title.isShow ? "Trending TV Show" : "Trending Movie"
+        }
+    }
+
+    /// "TV Show · 2025 · ★ 7.8"
+    private var metaLine: String {
+        switch slide.source {
+        case .library(let item):
+            return item.metaLine
+        case .online(let title):
+            var parts = [title.isShow ? "TV Show" : "Movie"]
+            if let year = title.year { parts.append(String(year)) }
+            if let rating = title.rating, rating > 0 { parts.append("★ " + String(format: "%.1f", rating)) }
+            return parts.joined(separator: " · ")
+        }
+    }
+
+    /// The line under the title on an iPad: "2025 · 1h 52m", with the age rating drawn as a chip beside it.
+    private var wideMetaText: String {
+        guard case .library(let item) = slide.source, item.rating?.isEmpty == false else { return metaLine }
+        var parts: [String] = []
+        if let year = item.year { parts.append(String(year)) }
+        parts.append(TimeFormat.runtime(item.runtimeSeconds))
+        return parts.joined(separator: " · ")
+    }
+
+    private var ratingChip: String? {
+        if case .library(let item) = slide.source, let rating = item.rating, !rating.isEmpty { return rating }
+        return nil
+    }
+
+    /// "2h 52m left", for something you are partway through.
+    private var timeLeft: String? {
+        if case .library(let item) = slide.source, item.canResume {
+            return TimeFormat.timeLeft(item.remainingSeconds)
+        }
+        return nil
+    }
+
+    /// The TMDB ID the title logo is looked up by.
+    private var logoID: Int? {
+        switch slide.source {
+        case .library(let item): return item.tmdbShowID ?? item.tmdbMovieID
+        case .online(let title): return title.tmdbID
+        }
+    }
+
+    private var logoIsShow: Bool {
+        switch slide.source {
+        case .library(let item): return item.tmdbShowID != nil
+        case .online(let title): return title.isShow
+        }
+    }
+
     // MARK: Buttons
 
     @ViewBuilder private var primaryButton: some View {
@@ -470,6 +650,29 @@ private struct HeroSlideView: View {
         }
     }
 
+    /// The round "+" button of the wide billboard. For something in your library it adds it to Favorites, or takes it
+    /// out again. For an online title it opens the page, where it can be added.
+    @ViewBuilder private var addButton: some View {
+        switch slide.source {
+        case .library(let item):
+            Button {
+                app.toggleFavorite(item.id)
+            } label: {
+                Image(systemName: item.isFavorite ? "checkmark" : "plus")
+            }
+            .buttonStyle(HeroButtonStyle(kind: .icon))
+            .accessibilityLabel(item.isFavorite ? "Remove from Favorites" : "Add to Favorites")
+        case .online(let title):
+            Button {
+                openOnline(title)
+            } label: {
+                Image(systemName: "plus")
+            }
+            .buttonStyle(HeroButtonStyle(kind: .icon))
+            .accessibilityLabel("Open")
+        }
+    }
+
     @ViewBuilder private var infoButton: some View {
         switch slide.source {
         case .library(let item):
@@ -491,6 +694,108 @@ private struct HeroSlideView: View {
 }
 
 #endif
+
+// MARK: - Title logo
+
+/// Logos already looked up, so a title is asked for only once.
+@MainActor
+enum TitleLogoCache {
+    static var found: [String: String] = [:]
+    static var missing: Set<String> = []
+}
+
+/// The title drawn as its logo, like the Apple TV app. Until TMDB answers, and when it has no logo, the name
+/// is drawn in plain type.
+struct TitleLogo: View {
+    @Environment(AppState.self) private var app
+    let title: String
+    let tmdbID: Int?
+    let isShow: Bool
+
+    @State private var logoPath: String?
+    @State private var resolved = false
+
+    private var key: String { (isShow ? "tv-" : "movie-") + String(tmdbID ?? 0) }
+
+    var body: some View {
+        Group {
+            if let logoPath, let url = TMDBClient.logoURL(logoPath) {
+                CachedAsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFit()
+                    case .failure:
+                        plainTitle
+                    default:
+                        Color.clear
+                    }
+                }
+                .frame(maxWidth: 340, maxHeight: 92, alignment: .leading)
+            } else if resolved {
+                plainTitle
+            } else {
+                Color.clear.frame(height: 92)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: key) { await load() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isHeader)
+    }
+
+    private var plainTitle: some View {
+        Text(title)
+            .font(.system(size: 58, weight: .heavy))
+            .foregroundStyle(.white)
+            .lineLimit(2)
+            .minimumScaleFactor(0.5)
+            .shadow(color: .black.opacity(0.45), radius: 12, y: 3)
+    }
+
+    @MainActor
+    private func load() async {
+        logoPath = nil
+        resolved = false
+        guard let tmdbID else {
+            resolved = true
+            return
+        }
+        if let known = TitleLogoCache.found[key] {
+            logoPath = known
+            resolved = true
+            return
+        }
+        if TitleLogoCache.missing.contains(key) {
+            resolved = true
+            return
+        }
+        guard let client = app.tmdbClient else {
+            resolved = true
+            return
+        }
+
+        let path: String?
+        do {
+            if isShow {
+                path = try await client.titleLogoPath(showID: tmdbID)
+            } else {
+                path = try await client.titleLogoPath(movieID: tmdbID)
+            }
+        } catch {
+            // Not saved as "missing", so the next visit tries again.
+            resolved = true
+            return
+        }
+        if let path {
+            TitleLogoCache.found[key] = path
+            logoPath = path
+        } else {
+            TitleLogoCache.missing.insert(key)
+        }
+        resolved = true
+    }
+}
 
 // MARK: - Apple TV
 

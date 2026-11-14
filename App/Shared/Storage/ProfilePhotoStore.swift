@@ -15,7 +15,7 @@ enum ProfilePhotoStore {
 
     static func load(for id: UUID) -> UIImage? {
         if let cached = cache[id] { return cached }
-        guard let data = try? Data(contentsOf: CasaPlayStorage.url(filename(id))),
+        guard let data = CasaPlayStorage.read(filename(id)),
               let image = UIImage(data: data) else { return nil }
         cache[id] = image
         return image
@@ -33,24 +33,22 @@ enum ProfilePhotoStore {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let square = UIGraphicsImageRenderer(size: target, format: format).image { _ in
+            // A tall photo keeps more of its top, because that is where the head is.
+            let spareHeight = drawn.height - target.height
             original.draw(in: CGRect(x: (target.width - drawn.width) / 2,
-                                     y: (target.height - drawn.height) / 2,
+                                     y: spareHeight > 0 ? -spareHeight * 0.2 : (target.height - drawn.height) / 2,
                                      width: drawn.width,
                                      height: drawn.height))
         }
         guard let jpeg = square.jpegData(compressionQuality: 0.85) else { return false }
-        do {
-            try jpeg.write(to: CasaPlayStorage.url(filename(id)), options: .atomic)
-        } catch {
-            return false
-        }
+        guard CasaPlayStorage.write(jpeg, to: filename(id)) else { return false }
         cache[id] = square
         return true
     }
 
     static func remove(for id: UUID) {
         cache[id] = nil
-        try? FileManager.default.removeItem(at: CasaPlayStorage.url(filename(id)))
+        CasaPlayStorage.remove(filename(id))
     }
 }
 

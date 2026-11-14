@@ -252,6 +252,18 @@ final class AppState {
         ProfileStore.save(profiles)
     }
 
+    /// Removes every profile except the one in use, and their photos.
+    func keepOnlyActiveProfile() {
+        let keep = activeProfile
+        for profile in profiles where profile.id != keep.id {
+            ProfilePhotoStore.remove(for: profile.id)
+        }
+        profiles = [keep]
+        activeProfileID = keep.id
+        ProfileStore.save(profiles)
+        photoRevision += 1
+    }
+
     /// What the active profile is allowed to see. The Kids profile only shows G and PG.
     var library: [MediaItem] {
         guard activeProfile.isKids else { return items }

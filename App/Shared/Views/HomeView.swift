@@ -79,9 +79,9 @@ extension HomeView {
                     VStack(alignment: .leading, spacing: 28) {
                         let slides = heroSlides
                         if slides.isEmpty {
-                            HomeHeader(topInset: topInset)
+                            HomeHeader(topInset: topInset, wide: AppleMetrics.isWide(proxy.size.width))
                         } else {
-                            HomeHero(slides: slides, topInset: topInset) { opener.open($0) }
+                            HomeHero(slides: slides, topInset: topInset, containerSize: proxy.size) { opener.open($0) }
                         }
 
                         if app.tmdbClient == nil {
@@ -183,7 +183,7 @@ struct HeroView: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue)
+            BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue, alignment: .top)
             LinearGradient(
                 colors: [Color.clear, Theme.background],
                 startPoint: .center,

@@ -549,7 +549,7 @@ private struct ChannelCard: View {
                 LinearGradient(colors: [Color.white.opacity(0.14), Color.white.opacity(0.05)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)
                 if let url = LiveTV.artworkURL(for: channel) {
-                    AsyncImage(url: url) { phase in
+                    CachedAsyncImage(url: url) { phase in
                         if let image = phase.image {
                             image.resizable().scaledToFit().padding(Metrics.s(12))
                         } else {

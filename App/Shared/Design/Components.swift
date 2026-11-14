@@ -202,7 +202,7 @@ struct PosterCard: View {
 
     @ViewBuilder private var posterArt: some View {
         if let path = item.posterPath, let url = TMDBClient.posterURL(path) {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
                 default: ArtView(hue: item.artHue, title: item.title)
@@ -244,7 +244,7 @@ struct LandscapeCard: View {
 
     @ViewBuilder private var landscapeArt: some View {
         if let path = item.backdropPath ?? item.posterPath, let url = TMDBClient.backdropURL(path) {
-            AsyncImage(url: url) { phase in
+            CachedAsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
                 default: ArtView(hue: item.artHue, title: item.title)
@@ -273,13 +273,13 @@ struct Shelf<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.s(8)) {
             header
-                .padding(.horizontal, Metrics.screenPadding)
+                .padding(.horizontal, AppleMetrics.edge)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: Metrics.shelfSpacing) {
+                LazyHStack(alignment: .top, spacing: AppleMetrics.gap) {
                     content()
                 }
-                .padding(.horizontal, Metrics.screenPadding)
+                .padding(.horizontal, AppleMetrics.edge)
                 .padding(.vertical, Platform.isTV ? 28 : 0)
             }
         }

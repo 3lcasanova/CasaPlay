@@ -199,6 +199,37 @@ public struct TMDBClient {
         try await get(path: "/tv/\(id)/recommendations", params: Self.pageParams(page), as: TMDBShowPage.self).results
     }
 
+    // MARK: - Title logos
+
+    /// The title of a film drawn as its logo, for the big billboard. English first, then logos with no language.
+    public func titleLogoPath(movieID: Int) async throws -> String? {
+        try await logoPath(at: "/movie/\(movieID)/images")
+    }
+
+    /// The title of a show drawn as its logo.
+    public func titleLogoPath(showID: Int) async throws -> String? {
+        try await logoPath(at: "/tv/\(showID)/images")
+    }
+
+    private func logoPath(at path: String) async throws -> String? {
+        let images = try await get(path: path, params: ["include_image_language": "en,null"], as: TMDBImages.self)
+        return Self.bestLogo(images.logos ?? [])
+    }
+
+    /// The best English logo, or the best one with no language when there is no English one. SVG files are skipped
+    /// because the image view can't draw them.
+    static func bestLogo(_ logos: [TMDBLogo]) -> String? {
+        let drawable = logos.filter { !$0.file_path.lowercased().hasSuffix(".svg") }
+        let english = drawable.filter { $0.iso_639_1 == "en" }
+        let pool = english.isEmpty ? drawable.filter { $0.iso_639_1 == nil } : english
+        return pool.max { ($0.vote_average ?? 0) < ($1.vote_average ?? 0) }?.file_path
+    }
+
+    /// A logo picture. Width: 500px.
+    public static func logoURL(_ path: String) -> URL? {
+        URL(string: "\(imageBase)/w500\(path)")
+    }
+
     /// The latest and next episode of a show, for the "S01 E04" badge and the release ribbon on its poster.
     public func showAirInfo(id: Int) async throws -> TMDBShowAirInfo {
         try await get(path: "/tv/\(id)", params: [:], as: TMDBShowAirInfo.self)
@@ -226,6 +257,11 @@ public struct TMDBClient {
     /// The backdrop at its full size, usually 1920 pixels wide or more. For the big billboard on Apple TV.
     public static func originalBackdropURL(_ path: String) -> URL? {
         URL(string: "\(imageBase)/original\(path)")
+    }
+
+    /// A small backdrop, 300 pixels wide, for the soft glow behind Home on Apple TV.
+    public static func smallBackdropURL(_ path: String) -> URL? {
+        URL(string: "\(imageBase)/w300\(path)")
     }
 
     /// Full URL for a backdrop path. Width: 1280px.
@@ -455,4 +491,15 @@ public struct TMDBCastMember: Decodable, Sendable {
         case name, character
         case profilePath = "profile_path"
     }
+}
+
+/// The pictures TMDB has for a title. Only the logos are used.
+struct TMDBImages: Decodable {
+    let logos: [TMDBLogo]?
+}
+
+struct TMDBLogo: Decodable {
+    let file_path: String
+    let iso_639_1: String?
+    let vote_average: Double?
 }

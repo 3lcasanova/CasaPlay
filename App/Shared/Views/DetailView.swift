@@ -127,7 +127,7 @@ private struct DetailContent: View {
     private func hero(_ decision: PlaybackDecision) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack(alignment: .bottomLeading) {
-                BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue)
+                BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue, alignment: .top)
                 // Dark from the left for the text, and into the page colour at the bottom.
                 LinearGradient(colors: [Theme.background.opacity(0.9), Theme.background.opacity(0.45), Color.clear],
                                startPoint: .leading, endPoint: .trailing)
@@ -790,9 +790,10 @@ private struct CastTile: View {
 
     var body: some View {
         VStack(spacing: Metrics.s(8)) {
-            AsyncImage(url: member.profilePath.flatMap(TMDBClient.posterURL)) { phase in
+            CachedAsyncImage(url: member.profilePath.flatMap(TMDBClient.posterURL)) { phase in
                 if let image = phase.image {
-                    image.resizable().scaledToFill()
+                    // Faces sit near the top of a portrait, so keep the top and trim the bottom.
+                    image.resizable().scaledToFill().frame(width: size, height: size, alignment: .top)
                 } else {
                     AvatarView(text: member.initials, hue: hue, size: size)
                 }

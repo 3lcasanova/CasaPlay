@@ -3,7 +3,7 @@
 import SwiftUI
 import CasaPlayKit
 
-/// Apple TV and iPhone use tabs. iPad uses a sidebar.
+/// Apple TV and iPhone use tabs. iPad uses a sidebar that can fold into tabs along the top (a plain sidebar before iPadOS 18).
 struct RootView: View {
     @Environment(AppState.self) private var app
     @Environment(TorrentCenter.self) private var torrents
@@ -43,7 +43,11 @@ struct RootView: View {
         tabs
         #else
         if sizeClass == .regular {
-            sidebar
+            if #available(iOS 18.0, *) {
+                AdaptiveTabs(selection: selection) { sectionView($0) }
+            } else {
+                sidebar
+            }
         } else {
             tabs
         }
@@ -94,3 +98,73 @@ struct RootView: View {
         }
     }
 }
+
+#if !os(tvOS)
+
+/// iPad, like the Apple TV app: a sidebar that is open to start with and can fold into tabs along the top.
+/// "Edit" at the top of the sidebar lets people reorder or hide tabs, and their profile sits at the bottom.
+@available(iOS 18.0, *)
+private struct AdaptiveTabs<Content: View>: View {
+    @Environment(AppState.self) private var app
+    @Binding var selection: AppSection
+    @AppStorage("CasaPlayTabCustomization") private var customization: TabViewCustomization
+    let content: (AppSection) -> Content
+
+    init(selection: Binding<AppSection>, @ViewBuilder content: @escaping (AppSection) -> Content) {
+        _selection = selection
+        self.content = content
+    }
+
+    var body: some View {
+        TabView(selection: $selection) {
+            tab(.home)
+            tab(.movies)
+            tab(.series)
+            tab(.iptv)
+            TabSection("More") {
+                tab(.extensions)
+                tab(.servers)
+                tab(.profile)
+            }
+            .customizationID("casaplay.more")
+        }
+        .tabViewStyle(.sidebarAdaptable)
+        .defaultAdaptableTabBarPlacement(.sidebar)
+        .tabViewCustomization($customization)
+        .tabViewSidebarBottomBar { profileRow }
+    }
+
+    private func tab(_ section: AppSection) -> some TabContent<AppSection> {
+        Tab(section.title, systemImage: section.systemImage, value: section) {
+            content(section)
+        }
+        .customizationID("casaplay." + section.rawValue)
+    }
+
+    /// "El Casanova · Switch Profile" at the bottom of the sidebar.
+    private var profileRow: some View {
+        Button {
+            selection = .profile
+        } label: {
+            HStack(spacing: 12) {
+                ProfileAvatar(profile: app.activeProfile, size: 40)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(app.activeProfile.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .lineLimit(1)
+                    Text("Switch Profile")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Profile: \(app.activeProfile.name)")
+    }
+}
+
+#endif

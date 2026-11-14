@@ -5,10 +5,14 @@ import CasaPlayKit
 #if !os(tvOS)
 import PhotosUI
 #endif
+#if canImport(UIKit)
+import UIKit
+#endif
 
 struct ProfileView: View {
     @Environment(AppState.self) private var app
     @State private var showingAddProfile = false
+    @State private var confirmingKeepOnly = false
 
     var body: some View {
         NavigationStack {
@@ -28,6 +32,9 @@ struct ProfileView: View {
                                 }
                             }
                             .posterButtonStyle()
+                            #if !os(tvOS)
+                            // Not on Apple TV: a long-press menu there can get in the way of choosing a profile.
+                            // It has the "Remove other profiles" row below instead.
                             .contextMenu {
                                 if app.profiles.count > 1 {
                                     Button("Delete \(profile.name)", systemImage: "trash", role: .destructive) {
@@ -35,6 +42,7 @@ struct ProfileView: View {
                                     }
                                 }
                             }
+                            #endif
                         }
 
                         // Add profile button
@@ -61,6 +69,27 @@ struct ProfileView: View {
 
                     VStack(alignment: .leading, spacing: Metrics.s(12)) {
                         ProfilePhotoRows()
+
+                        if app.profiles.count > 1 {
+                            Button(role: .destructive) {
+                                confirmingKeepOnly = true
+                            } label: {
+                                SettingsLinkRow(title: "Remove other profiles",
+                                                detail: "Keep only \(app.activeProfile.name)",
+                                                symbol: "person.crop.circle.badge.minus",
+                                                showsChevron: false)
+                            }
+                            .posterButtonStyle()
+                            .confirmationDialog("Remove every profile except \(app.activeProfile.name)?",
+                                                isPresented: $confirmingKeepOnly,
+                                                titleVisibility: .visible) {
+                                Button("Remove \(app.profiles.count - 1) other profile\(app.profiles.count == 2 ? "" : "s")",
+                                       role: .destructive) {
+                                    app.keepOnlyActiveProfile()
+                                }
+                                Button("Cancel", role: .cancel) {}
+                            }
+                        }
 
                         NavigationLink {
                             SettingsView()
@@ -353,7 +382,8 @@ private struct ProfilePhotoRows: View {
 }
 
 #if os(tvOS)
-/// Apple TV: type the web address of a picture and it becomes the profile photo.
+/// Apple TV: type the web address of a picture and it becomes the profile photo. This is a page of its own
+/// with a solid background, so nothing from the Profile screen shows through it.
 private struct PhotoLinkSheet: View {
     @Environment(AppState.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -361,43 +391,104 @@ private struct PhotoLinkSheet: View {
     @State private var text = ""
     @State private var isLoading = false
     @State private var message: String?
+    @FocusState private var addressFocused: Bool
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// What was typed, as a web address. "example.com/a.jpg" works without the https://, and http:// is
+    /// upgraded, because Apple TV only talks to secure addresses.
+    private var address: URL? {
+        guard !trimmed.isEmpty else { return nil }
+        let full = trimmed.contains("://") ? trimmed : "https://" + trimmed
+        guard var parts = URLComponents(string: full), let host = parts.host, !host.isEmpty,
+              let scheme = parts.scheme?.lowercased(), scheme == "https" || scheme == "http" else { return nil }
+        parts.scheme = "https"
+        return parts.url
+    }
+
     var body: some View {
-        NavigationStack {
-            Form {
-                Section("Picture web address") {
+        ZStack {
+            Theme.background.ignoresSafeArea()
+
+            HStack(alignment: .top, spacing: Metrics.s(60)) {
+                VStack(spacing: Metrics.s(12)) {
+                    ProfileAvatar(profile: profile, size: Metrics.s(110))
+                    Text(profile.name)
+                        .font(.casa(16, weight: .semibold))
+                        .foregroundStyle(Theme.textPrimary)
+                        .lineLimit(1)
+                }
+                .frame(width: Metrics.s(150))
+
+                VStack(alignment: .leading, spacing: Metrics.s(18)) {
+                    Text("Profile photo")
+                        .font(.casa(30, weight: .bold))
+                        .foregroundStyle(Theme.textPrimary)
+                    Text("Type the web address of a picture, like https://example.com/photo.jpg")
+                        .font(.casa(14))
+                        .foregroundStyle(Theme.textSecondary)
+
                     TextField("https://example.com/photo.jpg", text: $text)
                         .autocorrectionDisabled()
-                }
-                Section {
-                    Button(isLoading ? "Loading…" : "Use this picture") {
-                        Task { await load() }
+                        .focused($addressFocused)
+
+                    HStack(spacing: Metrics.s(16)) {
+                        Button {
+                            Task { await load() }
+                        } label: {
+                            Text(isLoading ? "Loading…" : "Use this picture")
+                        }
+                        .buttonStyle(HeroButtonStyle(kind: .primary))
+                        .disabled(isLoading || address == nil)
+
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Cancel")
+                        }
+                        .buttonStyle(HeroButtonStyle(kind: .secondary))
                     }
-                    .disabled(isLoading || trimmed.isEmpty)
-                    Button("Cancel") { dismiss() }
+                    .padding(.top, Metrics.s(6))
+
+                    if let message {
+                        Text(message)
+                            .font(.casa(13, weight: .medium))
+                            .foregroundStyle(Theme.accent)
+                    }
+
+                    Text("Tip: when you open the field, your iPhone offers its keyboard. Copy the picture address on your iPhone and paste it there.")
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
+                        .padding(.top, Metrics.s(6))
                 }
-                if let message {
-                    Section { Text(message) }
-                }
+                .frame(maxWidth: Metrics.s(560), alignment: .leading)
             }
+            .padding(Metrics.s(40))
         }
+        .onAppear { addressFocused = true }
     }
 
     private func load() async {
-        guard let url = URL(string: trimmed), url.scheme?.hasPrefix("http") == true else {
-            message = "Enter a web address that starts with https://"
+        guard let url = address else {
+            message = "That doesn't look like a web address."
             return
         }
         isLoading = true
+        message = nil
         defer { isLoading = false }
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            if app.setProfilePhoto(data, for: profile.id) {
+            var request = URLRequest(url: url, timeoutInterval: 20)
+            request.setValue("image/*", forHTTPHeaderField: "Accept")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                message = "That address answered with error \(http.statusCode)."
+            } else if UIImage(data: data) == nil {
+                let kind = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? "something that isn't a picture"
+                message = "That address returned \(kind), not a picture. Use a link to the image file itself."
+            } else if app.setProfilePhoto(data, for: profile.id) {
                 dismiss()
             } else {
-                message = "That address isn't a picture."
+                message = "The picture loaded, but it couldn't be saved on this device."
             }
         } catch {
             message = error.localizedDescription
