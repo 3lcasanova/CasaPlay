@@ -58,18 +58,14 @@ struct EpisodesView: View {
     private var seasonPicker: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: Metrics.s(8)) {
+                // The app's own chip, not a plain Button: on Apple TV the system focus highlight painted
+                // over the amber label and the focused season's name vanished.
                 ForEach(1...totalSeasons, id: \.self) { n in
-                    Button("Season \(n)") { selectedSeason = n }
-                        .font(.casa(13, weight: selectedSeason == n ? .semibold : .regular))
-                        .foregroundStyle(selectedSeason == n ? Theme.accent : Theme.textSecondary)
-                        .padding(.horizontal, Metrics.s(12))
-                        .padding(.vertical, Metrics.s(6))
-                        .background(selectedSeason == n ? Theme.accent.opacity(0.15) : Color.clear,
-                                    in: Capsule())
+                    ChipButton(title: "Season \(n)", isSelected: selectedSeason == n) { selectedSeason = n }
                 }
             }
             .padding(.horizontal, Metrics.screenPadding)
-            .padding(.vertical, Metrics.s(10))
+            .padding(.vertical, Platform.isTV ? 20 : Metrics.s(10))
         }
         .background(Theme.background)
     }
