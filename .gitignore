@@ -8,6 +8,7 @@
 Packages/*/.build/
 
 # Xcode
+build/
 xcuserdata/
 DerivedData/
 *.xcuserstate

@@ -270,7 +270,8 @@ struct StreamSourcesView: View {
         results = SourceResults()
         let providers = await buildProviders()
         guard !Task.isCancelled else { return }
-        let probe = PlaylistProbe(fallback: AVFoundationProbe())
+        // VLC plays what Apple's player can't, so MKV and similar files aren't marked "can't play".
+        let probe = PlaylistProbe(fallback: AVFoundationProbe(compatibilityPlays: true), compatibilityPlays: true)
         let agg = SourceAggregator(providers: providers, probe: probe)
         for await snapshot in agg.run(request, mode: mode) {
             guard !Task.isCancelled else { return }
@@ -314,7 +315,9 @@ struct StreamSourcesView: View {
             // Direct HTTP/HLS stream — hand off to AVFoundation player.
             let streamHeaders = headers.isEmpty ? nil : headers
             let ext = url.pathExtension.lowercased()
-            let container: MediaContainer = ext == "m3u8" ? .hls : (ext == "mp4" ? .mp4 : .other)
+            // mp4, m4v, mov and m3u8 go to Apple's player. mkv, avi, webm, ts and anything
+            // unrecognised go to VLC, which opens whatever the link turns out to be.
+            let container = MediaContainer(fileExtension: ext)
             let file = MediaFileInfo(container: container, videoCodec: .hevc)
             if let libraryItemID,
                app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders, file: file) {

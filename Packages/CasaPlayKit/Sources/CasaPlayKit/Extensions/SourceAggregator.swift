@@ -56,6 +56,9 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     /// Text shown when an external link is treated as a stream.
     public static let externalReason = "This opens in another app or website."
 
+    /// Shown for a stream Apple's player can't open when the compatibility player (VLC) can.
+    public static let compatibilityNote = "Plays in CasaPlay's compatibility player; checked once playback starts."
+
     /// For a "Where to watch" entry: the service ("Amazon Prime Video") and the offer
     /// ("Subscription, Rent, Buy"), taken from the two lines of the add-on's label.
     public var externalService: (name: String, detail: String?)? {
@@ -547,11 +550,20 @@ public struct PlaylistProbe: StreamProbe {
     let transport: HTTPTransport
     let fallback: (any StreamProbe)?
     let timeout: TimeInterval
+    /// True when the app bundles a compatibility player (VLC). Then MKV, AVI and similar files
+    /// are playable, not "can't play".
+    let compatibilityPlays: Bool
 
-    public init(transport: HTTPTransport = URLSessionTransport(), fallback: (any StreamProbe)? = nil, timeout: TimeInterval = 12) {
+    public init(
+        transport: HTTPTransport = URLSessionTransport(),
+        fallback: (any StreamProbe)? = nil,
+        timeout: TimeInterval = 12,
+        compatibilityPlays: Bool = false
+    ) {
         self.transport = transport
         self.fallback = fallback
         self.timeout = timeout
+        self.compatibilityPlays = compatibilityPlays
     }
 
     public func probe(_ candidate: StreamCandidate) async -> VerificationState {
@@ -562,7 +574,9 @@ public struct PlaylistProbe: StreamProbe {
         case .http(let url, let headers):
             let ext = url.pathExtension.lowercased()
             if ["mkv", "avi", "webm", "wmv", "flv"].contains(ext) {
-                return .unplayable("\(ext.uppercased()) files don't play in Apple's player.")
+                return compatibilityPlays
+                    ? .unreadable(StreamCandidate.compatibilityNote)
+                    : .unplayable("\(ext.uppercased()) files don't play in Apple's player.")
             }
             if ext == "m3u8" || ext == "m3u" {
                 var request = URLRequest(url: url)

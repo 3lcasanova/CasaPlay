@@ -62,6 +62,14 @@ public struct TMDBClient {
         try await get(path: "/movie/top_rated", params: [:], as: TMDBMoviePage.self).results
     }
 
+    public func popularTV(page: Int = 1) async throws -> [TMDBShow] {
+        try await get(path: "/tv/popular", params: ["page": "\(page)"], as: TMDBShowPage.self).results
+    }
+
+    public func topRatedTV() async throws -> [TMDBShow] {
+        try await get(path: "/tv/top_rated", params: [:], as: TMDBShowPage.self).results
+    }
+
     // MARK: - Detail
 
     public func movieDetail(id: Int) async throws -> TMDBMovieDetail {

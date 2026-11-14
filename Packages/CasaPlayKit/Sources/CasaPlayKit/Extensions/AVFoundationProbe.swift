@@ -11,8 +11,14 @@ import Foundation
 
 public struct AVFoundationProbe: StreamProbe {
     public let timeout: TimeInterval
+    /// True when the app bundles a compatibility player (VLC). A file Apple's player can't open
+    /// is then still playable, so it isn't marked "can't play".
+    public let compatibilityPlays: Bool
 
-    public init(timeout: TimeInterval = 15) { self.timeout = timeout }
+    public init(timeout: TimeInterval = 15, compatibilityPlays: Bool = false) {
+        self.timeout = timeout
+        self.compatibilityPlays = compatibilityPlays
+    }
 
     /// Options for AVURLAsset. `AVURLAssetHTTPHeaderFieldsKey` is widely used but not formally
     /// documented by Apple; it is the only way to send an add-on's required headers.
@@ -26,7 +32,9 @@ public struct AVFoundationProbe: StreamProbe {
         }
         let asset = AVURLAsset(url: url, options: Self.assetOptions(headers: headers))
         do {
-            return try await withTimeout(timeout) { try await Self.read(asset) }
+            let state = try await withTimeout(timeout) { try await Self.read(asset) }
+            if compatibilityPlays, case .unplayable = state { return .unreadable(StreamCandidate.compatibilityNote) }
+            return state
         } catch ExtensionError.timedOut {
             asset.cancelLoading()
             return .unreadable("The file didn't answer in time.")
@@ -35,6 +43,9 @@ public struct AVFoundationProbe: StreamProbe {
             if ns.domain == NSURLErrorDomain, [NSURLErrorUserAuthenticationRequired, NSURLErrorNoPermissionsToReadFile].contains(ns.code) {
                 return .unplayable("The link was refused; it may have expired.")
             }
+            // A network failure (404, no route) is a dead link. Anything else means AVFoundation
+            // doesn't understand the file, which VLC may.
+            if compatibilityPlays, ns.domain != NSURLErrorDomain { return .unreadable(StreamCandidate.compatibilityNote) }
             return .unplayable("Apple's player can't open this stream (\(ns.localizedDescription)).")
         }
     }

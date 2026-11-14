@@ -1,7 +1,8 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// Phase 1 player: Apple's own AVPlayerViewController, so Apple TV gets the native
-// transport bar, subtitle and audio menus, HDR and Dolby Vision switching for free.
+// Two engines. Files Apple's player can open use AVPlayerViewController, so Apple TV gets the
+// native transport bar, subtitle and audio menus, HDR and Dolby Vision switching for free.
+// Everything else (MKV, AVI, WebM, DTS, TrueHD, PGS subtitles...) goes to VLCPlayerScreen.
 
 import SwiftUI
 import AVKit
@@ -14,6 +15,7 @@ struct PlayerScreen: View {
 
     var body: some View {
         let decision = app.router.decide(for: item.file)
+        let usesVLC = decision.engine == .compatibility
 
         ZStack {
             Color.black.ignoresSafeArea()
@@ -42,11 +44,16 @@ struct PlayerScreen: View {
                         detail: "This title has no playable address. Connect a source to play it."
                     )
                 }
-            } else if decision.engine == .compatibility {
-                message(
-                    title: "Needs the compatibility engine",
-                    detail: "This file needs the compatibility player, which is planned for a later phase."
-                )
+            } else if usesVLC {
+                if let url = item.streamURL {
+                    VLCPlayerScreen(item: item, url: url)
+                        .ignoresSafeArea()
+                } else {
+                    message(
+                        title: "No source yet",
+                        detail: "This title has no playable address. Connect a source to play it."
+                    )
+                }
             } else {
                 message(
                     title: "Can't play this file yet",
@@ -71,7 +78,8 @@ struct PlayerScreen: View {
                     }
                     .accessibilityLabel("Close player")
                     Spacer()
-                    subtitleMenu
+                    // The compatibility player has its own subtitle menu.
+                    if !usesVLC { subtitleMenu }
                 }
                 .padding()
                 Spacer()

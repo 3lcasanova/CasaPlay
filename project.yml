@@ -24,12 +24,16 @@ settings:
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-    # Add your Apple developer team to run on a real device:
-    # DEVELOPMENT_TEAM: ABCDE12345
+    # Apple developer team used to sign for real devices.
+    DEVELOPMENT_TEAM: 25G5V76853
 
 packages:
   CasaPlayKit:
     path: Packages/CasaPlayKit
+  # VLCKit 3.6 (LGPL-2.1) as a Swift package. Plays MKV and other files Apple's player can't.
+  VLCKitSPM:
+    url: https://github.com/koombea/vlckit-spm
+    from: 3.6.0
 
 targets:
   CasaPlay-iOS:
@@ -40,6 +44,8 @@ targets:
       - App/Resources
     dependencies:
       - package: CasaPlayKit
+      - package: VLCKitSPM
+        product: VLCKitSPM
     settings:
       base:
         PRODUCT_NAME: CasaPlay
@@ -99,10 +105,14 @@ targets:
       - App/Resources
     dependencies:
       - package: CasaPlayKit
+      - package: VLCKitSPM
+        product: VLCKitSPM
     settings:
       base:
         PRODUCT_NAME: CasaPlay
-        PRODUCT_BUNDLE_IDENTIFIER: com.casanova.casaplay
+        # Reuses an App ID that is already registered for this team. Free teams can only
+        # create 10 new App IDs per 7 days, which blocked com.casanova.casaplay.
+        PRODUCT_BUNDLE_IDENTIFIER: com.casanova.CasaPlay
         ASSETCATALOG_COMPILER_APPICON_NAME: "App Icon & Top Shelf Image"
     info:
       path: Config/tvOS/Info.plist

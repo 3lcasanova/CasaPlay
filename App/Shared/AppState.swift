@@ -4,15 +4,15 @@ import SwiftUI
 import CasaPlayKit
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case home, search, movies, favorites, torrents, extensions, servers, profile
+    case home, movies, series, favorites, torrents, extensions, servers, profile
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .home: return "Home"
-        case .search: return "Search"
         case .movies: return "Movies"
+        case .series: return "Series"
         case .favorites: return "Favorites"
         case .torrents: return "Torrents"
         case .extensions: return "Extensions"
@@ -24,8 +24,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .home: return "house"
-        case .search: return "magnifyingglass"
         case .movies: return "film"
+        case .series: return "tv"
         case .favorites: return "heart"
         case .torrents: return "arrow.down.circle"
         case .extensions: return "puzzlepiece.extension"
@@ -86,7 +86,8 @@ final class AppState {
     var subtitleStyle = SubtitleStyle.default
     var selectedSection: AppSection = .home
     var playing: MediaItem?
-    var router = PlaybackRouter()
+    /// The compatibility engine (VLC) is on, so MKV and other files Apple's player can't open still play.
+    var router = PlaybackRouter(compatibilityEngineEnabled: true)
     /// Set when the user picks a torrent stream; clears after the sheet is dismissed.
     var pendingTorrentHash: InfoHash?
 

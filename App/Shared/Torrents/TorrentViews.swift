@@ -554,7 +554,7 @@ private struct FileRow: View {
     private var detail: String {
         var parts = [TorrentFormat.bytes(file.length)]
         if file.isVideo {
-            parts.append(file.playsInCasaPlay ? "Plays while downloading" : "Format needs another player")
+            parts.append(file.playsInCasaPlay ? "Plays while downloading" : "Plays while downloading · compatibility player")
         }
         return parts.joined(separator: " · ")
     }

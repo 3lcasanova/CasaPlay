@@ -3,9 +3,11 @@
 import SwiftUI
 import CasaPlayKit
 
+/// Movies, Series and Favorites. Movies and Series share this screen: a show is a library card
+/// with a TMDB show ID, so the two tabs just split the library by that.
 struct LibraryView: View {
     enum Mode {
-        case all, favorites
+        case movies, series, favorites
     }
 
     enum Filter: String, CaseIterable, Identifiable {
@@ -41,17 +43,54 @@ struct LibraryView: View {
                        setError: { openError = $0 })
     }
 
-    /// Popular films not already in the library, shown below it on the Movies tab.
-    private var popular: [DiscoverTitle] {
-        guard mode == .all else { return [] }
+    private var screenTitle: String {
+        switch mode {
+        case .movies: return "Movies"
+        case .series: return "Series"
+        case .favorites: return "Favorites"
+        }
+    }
+
+    /// Resolution and HDR come from the video file, which a show card doesn't have.
+    private var filters: [Filter] {
+        mode == .series ? [.all, .unwatched] : Filter.allCases
+    }
+
+    /// TMDB titles that aren't already in the library, narrowed by the filter box.
+    private func fresh(_ titles: [DiscoverTitle]) -> [DiscoverTitle] {
         let owned = Set(app.items.map { $0.title.lowercased() })
-        return app.discover.popularMovies
+        return titles
             .filter { !owned.contains($0.title.lowercased()) }
             .filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }
     }
 
+    /// Popular films, shown below the library on the Movies tab.
+    private var popular: [DiscoverTitle] {
+        guard mode == .movies else { return [] }
+        return fresh(app.discover.popularMovies)
+    }
+
+    /// Shelves of shows on the Series tab. A show only appears in the first shelf that has it.
+    private var seriesShelves: [(title: String, titles: [DiscoverTitle])] {
+        guard mode == .series else { return [] }
+        var seen = Set<String>()
+        func unique(_ list: [DiscoverTitle]) -> [DiscoverTitle] {
+            fresh(list).filter { seen.insert($0.id).inserted }
+        }
+        return [
+            ("Trending Shows", unique(app.discover.trendingTV)),
+            ("Popular Shows", unique(app.discover.popularTV)),
+            ("Top Rated Shows", unique(app.discover.topRatedTV))
+        ]
+    }
+
     private var visibleItems: [MediaItem] {
-        let base = (mode == .all) ? app.library : app.favorites
+        let base: [MediaItem]
+        switch mode {
+        case .movies: base = app.library.filter { $0.tmdbShowID == nil }
+        case .series: base = app.library.filter { $0.tmdbShowID != nil }
+        case .favorites: base = app.favorites
+        }
         return base
             .filter { filter.matches($0) }
             .filter { query.isEmpty || $0.title.localizedCaseInsensitiveContains(query) }
@@ -68,7 +107,7 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: Metrics.s(14)) {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Metrics.s(8)) {
-                            ForEach(Filter.allCases) { option in
+                            ForEach(filters) { option in
                                 ChipButton(title: option.rawValue, isSelected: option == filter) {
                                     filter = option
                                 }
@@ -78,7 +117,7 @@ struct LibraryView: View {
                         .padding(.vertical, Platform.isTV ? 14 : 0)
                     }
 
-                    if mode == .all && app.tmdbClient == nil && app.items.isEmpty {
+                    if mode != .favorites && app.tmdbClient == nil && app.items.isEmpty {
                         TMDBKeyNotice()
                     }
 
@@ -93,7 +132,7 @@ struct LibraryView: View {
                         if mode == .favorites || !query.isEmpty || filter != .all {
                             ContentUnavailableView(
                                 mode == .favorites && query.isEmpty ? "No favorites yet" : "Nothing found",
-                                systemImage: mode == .favorites ? "heart" : "film",
+                                systemImage: mode == .favorites ? "heart" : (mode == .series ? "tv" : "film"),
                                 description: Text(mode == .favorites && query.isEmpty
                                     ? "Tap the heart on a title to keep it here."
                                     : "Try a different search or filter.")
@@ -102,8 +141,8 @@ struct LibraryView: View {
                             .padding(.top, Metrics.sectionSpacing)
                         }
                     } else {
-                        if mode == .all {
-                            sectionTitle("Your Library")
+                        if mode != .favorites {
+                            sectionTitle(mode == .series ? "Your Shows" : "Your Library")
                         }
                         LazyVGrid(columns: columns, alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
                             ForEach(visibleItems) { item in
@@ -121,7 +160,7 @@ struct LibraryView: View {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: Metrics.sectionSpacing / 2) {
                             ForEach(popular) { title in
                                 Button { opener.open(title) } label: {
-                                    SearchPosterCard(
+                                    TitlePosterCard(
                                         title: title.title,
                                         year: title.year,
                                         posterPath: title.posterPath,
@@ -132,6 +171,12 @@ struct LibraryView: View {
                             }
                         }
                         .padding(.horizontal, Metrics.screenPadding)
+                    }
+
+                    if filter == .all {
+                        ForEach(seriesShelves, id: \.title) { shelf in
+                            DiscoverShelf(title: shelf.title, titles: shelf.titles) { opener.open($0) }
+                        }
                     }
                 }
                 .padding(.bottom, Metrics.sectionSpacing)
@@ -145,7 +190,7 @@ struct LibraryView: View {
             .task(id: app.tmdbClient == nil) {
                 await app.discover.loadIfNeeded(app.tmdbClient)
             }
-            .scrollingScreenTitle(mode == .all ? "Movies" : "Favorites")
+            .scrollingScreenTitle(screenTitle)
             .searchable(text: $query)
             .navigationDestination(for: UUID.self) { id in
                 DetailView(itemID: id)

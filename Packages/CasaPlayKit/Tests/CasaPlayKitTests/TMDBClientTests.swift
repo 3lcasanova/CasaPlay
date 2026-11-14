@@ -66,6 +66,22 @@ final class TMDBClientTests: XCTestCase {
         XCTAssertEqual(top.first?.id, 5)
     }
 
+    func testPopularAndTopRatedTV() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/tv/popular"] = HTTPResponse(status: 200, body: Data("""
+        {"results": [{"id": 10, "name": "Show A", "first_air_date": "2024-05-01"}, {"id": 11, "name": "Show B"}]}
+        """.utf8))
+        transport.routes["/3/tv/top_rated"] = HTTPResponse(status: 200, body: Data("""
+        {"results": [{"id": 12, "name": "Show C"}]}
+        """.utf8))
+        let client = makeClient(transport)
+        let popular = try await client.popularTV()
+        let top = try await client.topRatedTV()
+        XCTAssertEqual(popular.count, 2)
+        XCTAssertEqual(popular.first?.firstAirYear, 2024)
+        XCTAssertEqual(top.first?.name, "Show C")
+    }
+
     func testSearchMoviesEmptyResults() async throws {
         let transport = FakeTransport()
         transport.routes["/3/search/movie"] = HTTPResponse(status: 200, body: Data("""

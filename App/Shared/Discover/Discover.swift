@@ -1,6 +1,6 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// Real titles from TMDB for Home and Movies: trending, popular and top-rated lists.
+// Real titles from TMDB for Home, Movies and Series: trending, popular and top-rated lists.
 
 import SwiftUI
 import CasaPlayKit
@@ -36,6 +36,8 @@ final class DiscoverFeed {
     var trendingTV: [DiscoverTitle] = []
     var popularMovies: [DiscoverTitle] = []
     var topRated: [DiscoverTitle] = []
+    var popularTV: [DiscoverTitle] = []
+    var topRatedTV: [DiscoverTitle] = []
     var error: String?
     private(set) var isLoaded = false
 
@@ -47,10 +49,15 @@ final class DiscoverFeed {
             async let tv = client.trendingTV()
             async let popular = client.popularMovies()
             async let top = client.topRatedMovies()
+            // The two show lists only feed the Series tab, so a failure here doesn't hide the rest.
+            async let popularShows = try? client.popularTV()
+            async let topShows = try? client.topRatedTV()
             trendingMovies = try await trending.map(DiscoverTitle.init)
             trendingTV = try await tv.map(DiscoverTitle.init)
             popularMovies = try await popular.map(DiscoverTitle.init)
             topRated = try await top.map(DiscoverTitle.init)
+            popularTV = (await popularShows ?? []).map(DiscoverTitle.init)
+            topRatedTV = (await topShows ?? []).map(DiscoverTitle.init)
             error = nil
             isLoaded = true
         } catch {
@@ -93,7 +100,7 @@ struct DiscoverShelf: View {
             Shelf(title: title) {
                 ForEach(titles) { item in
                     Button { onSelect(item) } label: {
-                        SearchPosterCard(
+                        TitlePosterCard(
                             title: item.title,
                             year: item.year,
                             posterPath: item.posterPath,
