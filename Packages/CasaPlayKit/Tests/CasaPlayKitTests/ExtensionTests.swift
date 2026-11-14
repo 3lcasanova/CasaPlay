@@ -284,6 +284,25 @@ final class StreamParsingTests: XCTestCase {
         XCTAssertEqual(q.codec, "HEVC")
     }
 
+    func testInfoNotesAreNotServices() {
+        func external(_ id: String, _ label: String) -> StreamCandidate {
+            StreamCandidate(id: id, providerID: "p", providerName: "P", providerRole: .primary, providerPriority: 0,
+                            location: .external(URL(string: "https://example.com/" + id)!), label: label, filename: nil,
+                            advertised: AdvertisedQuality.parse(label), fetchedAt: Date())
+        }
+        let netflix = external("1", "Netflix\nSubscription")
+        let prime = external("2", "Amazon Prime Video\nSubscription, Rent, Buy")
+        let note = external("3", "R\nDigital release 2026-11-17. 3 wins total · Metacritic 89 · RT 94% · IMDb 543K votes · Box office $1,796,113,523 AI advisories: Sex mild · Violence strong · Language moderate")
+        XCTAssertFalse(netflix.isInfoNote)
+        XCTAssertFalse(prime.isInfoNote)
+        XCTAssertTrue(note.isInfoNote, "a long description is a note about the title, not a service")
+
+        var results = SourceResults(request: .movie(id: "tt1", title: "X", year: 2026), mode: .preferUHD)
+        results.hidden = [netflix, note, prime]
+        XCTAssertEqual(results.whereToWatch.map(\.id), ["1", "2"])
+        XCTAssertEqual(results.infoNotes.map(\.id), ["3"])
+    }
+
     func testAdvertisedParsing() {
         XCTAssertEqual(AdvertisedQuality.parse("Movie 4K DV Atmos").dynamicRange, .dolbyVision)
         XCTAssertEqual(AdvertisedQuality.parse("Movie 4K DV Atmos").audio, "Atmos")

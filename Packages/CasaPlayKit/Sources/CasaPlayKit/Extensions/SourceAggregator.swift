@@ -67,6 +67,16 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
         let name = lines.first.flatMap { $0.isEmpty ? nil : $0 } ?? providerName
         return (name, lines.count > 1 ? lines[1] : nil)
     }
+    /// An add-on's note about the title (release date, ratings, awards, content advisories) that arrives as an
+    /// external link. It is not a service to watch on, so it is kept out of "Where to watch". A service has a
+    /// short name and offer ("Netflix" / "Subscription, Rent, Buy"); a note runs long.
+    public var isInfoNote: Bool {
+        guard case .external = location else { return false }
+        let lines = label.split(separator: "\n", omittingEmptySubsequences: true)
+        let rest = lines.dropFirst().joined(separator: " ")
+        return lines.count > 2 || rest.count > 90
+    }
+
     public var id: String
     public var providerID: String
     public var providerName: String
@@ -346,12 +356,21 @@ public struct SourceResults: Equatable, Sendable {
     public var whereToWatch: [StreamCandidate] {
         var seen = Set<String>()
         return hidden
-            .filter { $0.externalService != nil }
+            .filter { $0.externalService != nil && !$0.isInfoNote }
             .sorted { $0.id.compare($1.id, options: .numeric) == .orderedAscending }
             .filter { c in
                 guard let s = c.externalService else { return false }
                 return seen.insert((s.name + "|" + (s.detail ?? "")).lowercased()).inserted
             }
+    }
+
+    /// Notes about the title from add-ons (see `StreamCandidate.isInfoNote`), in the order the add-ons returned them.
+    public var infoNotes: [StreamCandidate] {
+        var seen = Set<String>()
+        return hidden
+            .filter(\.isInfoNote)
+            .sorted { $0.id.compare($1.id, options: .numeric) == .orderedAscending }
+            .filter { seen.insert($0.label.lowercased()).inserted }
     }
 
     /// Hidden streams that are real streams, not "Where to watch" links.
@@ -545,7 +564,8 @@ public actor SourceAggregator {
                     switch result {
                     case .success(let found):
                         add(found, from: index)
-                        results.outcomes[index].status = .finished(count: found.count, ms: ms)
+                        // A note about the title is not a stream, so it does not count towards the source's results.
+                        results.outcomes[index].status = .finished(count: found.filter { !$0.isInfoNote }.count, ms: ms)
                     case .failure(let error):
                         results.outcomes[index].status = (error as? ExtensionError) == .timedOut
                             ? .timedOut

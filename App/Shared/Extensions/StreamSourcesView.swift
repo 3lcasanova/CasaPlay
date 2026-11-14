@@ -77,7 +77,7 @@ struct StreamSourcesView: View {
 
                 // Stream list
                 // With "Where to watch" entries the scrolling list is used, so a long list of services fits.
-                if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty {
+                if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty && results.infoNotes.isEmpty {
                     emptyView
                 } else {
                     streamList
@@ -196,6 +196,7 @@ struct StreamSourcesView: View {
                         .focusableOnTV()
                 }
                 whereToWatchSection
+                aboutSection
                 if !results.rejected.isEmpty {
                     rejectedSection
                 }
@@ -223,6 +224,27 @@ struct StreamSourcesView: View {
                     .foregroundStyle(Theme.textSecondary)
                 ForEach(services) { candidate in
                     WhereToWatchRow(candidate: candidate)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, Metrics.s(10))
+        }
+    }
+
+    // MARK: - About this title
+
+    /// What add-ons say about the title itself (release date, ratings, advisories). Kept apart from the
+    /// services, because none of it is somewhere to watch.
+    @ViewBuilder
+    private var aboutSection: some View {
+        let notes = results.infoNotes.filter { activeSource == nil || $0.providerID == activeSource }
+        if !notes.isEmpty {
+            VStack(alignment: .leading, spacing: Metrics.s(8)) {
+                Text("About this title")
+                    .font(.casa(13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                ForEach(notes) { candidate in
+                    WhereToWatchRow(candidate: candidate, isNote: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -507,6 +529,8 @@ private struct StreamCandidateRow: View {
 
 private struct WhereToWatchRow: View {
     let candidate: StreamCandidate
+    /// A note about the title rather than a service: shown with an info symbol.
+    var isNote = false
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -522,7 +546,7 @@ private struct WhereToWatchRow: View {
 
     private var content: some View {
         HStack(spacing: Metrics.s(10)) {
-            Image(systemName: Platform.isTV ? "tv" : "arrow.up.right.square")
+            Image(systemName: isNote ? "info.circle" : (Platform.isTV ? "tv" : "arrow.up.right.square"))
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.externalService?.name ?? candidate.providerName)
