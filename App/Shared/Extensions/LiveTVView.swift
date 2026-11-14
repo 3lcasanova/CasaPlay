@@ -506,6 +506,9 @@ struct LiveTVView: View {
                     showChoices = true
                 } else if result.onlyUnplayable {
                     notice = "\(channel.name) only offers links CasaPlay can't open here: a web page, YouTube or a torrent."
+                } else if Self.isSetupPlaceholder(channel.name) {
+                    // Some add-ons answer with one fake entry until their owner has configured them.
+                    notice = "\(Self.trimmedSetupTitle(channel.name)). This add-on has to be set up on its own website first: open its configure page, enter your key, then install the link it gives you."
                 } else {
                     notice = "\(channel.name) has no stream right now. Try again in a moment."
                 }
@@ -514,6 +517,18 @@ struct LiveTVView: View {
                 notice = "Couldn't open \(channel.name). \(error.localizedDescription)"
             }
         }
+    }
+
+    /// True for the stand-in entry an unconfigured add-on shows ("Setup required: add your … key").
+    private static func isSetupPlaceholder(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return ["setup required", "configuration required", "configure required", "not configured", "needs configuration"]
+            .contains { lower.hasPrefix($0) }
+    }
+
+    /// The placeholder's own wording without a trailing full stop, so the sentence after it reads cleanly.
+    private static func trimmedSetupTitle(_ name: String) -> String {
+        name.trimmingCharacters(in: CharacterSet(charactersIn: " .!"))
     }
 
     private func play(_ option: LiveStreamOption, channel: StremioMetaPreview) {
