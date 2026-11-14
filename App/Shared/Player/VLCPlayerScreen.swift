@@ -385,7 +385,9 @@ struct VLCPlayerScreen: View {
         case .loading, .buffering:
             ProgressView()
                 .progressViewStyle(.circular)
+                #if !os(tvOS)
                 .controlSize(.large)
+                #endif
                 .tint(Color.white)
         case .failed(let reason):
             failureView(reason)

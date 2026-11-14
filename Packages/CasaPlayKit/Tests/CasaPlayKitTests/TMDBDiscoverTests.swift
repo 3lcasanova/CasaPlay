@@ -169,7 +169,7 @@ final class TMDBBrowseTests: XCTestCase {
           {"file_path": "/en.svg", "iso_639_1": "en", "vote_average": 9}
         ]}
         """.utf8))
-        let path = try await makeClient(transport).titleLogoPath(movieID: 5)
+        let path = try await TMDBClient(apiKey: "test-key", transport: transport).titleLogoPath(movieID: 5)
         XCTAssertEqual(path, "/en-best.png")
         XCTAssertEqual(query(transport.sent.first)["include_image_language"], "en,null")
     }
@@ -179,10 +179,10 @@ final class TMDBBrowseTests: XCTestCase {
         transport.routes["/3/tv/8/images"] = HTTPResponse(status: 200, body: Data("""
         {"logos": [{"file_path": "/de.png", "iso_639_1": "de"}, {"file_path": "/none.png", "iso_639_1": null}]}
         """.utf8))
-        XCTAssertEqual(try await makeClient(transport).titleLogoPath(showID: 8), "/none.png")
+        XCTAssertEqual(try await TMDBClient(apiKey: "test-key", transport: transport).titleLogoPath(showID: 8), "/none.png")
 
         transport.routes["/3/tv/9/images"] = HTTPResponse(status: 200, body: Data(#"{"logos": []}"#.utf8))
-        let none = try await makeClient(transport).titleLogoPath(showID: 9)
+        let none = try await TMDBClient(apiKey: "test-key", transport: transport).titleLogoPath(showID: 9)
         XCTAssertNil(none)
         XCTAssertEqual(TMDBClient.logoURL("/x.png")?.absoluteString, "https://image.tmdb.org/t/p/w500/x.png")
     }

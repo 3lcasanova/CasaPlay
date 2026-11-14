@@ -610,7 +610,9 @@ struct TorrentPlaybackStatus: View {
             HStack(spacing: Metrics.s(10)) {
                 if stats.isBuffering {
                     ProgressView()
+                        #if !os(tvOS)
                         .controlSize(.small)
+                        #endif
                         .tint(Color.white)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Buffering")
