@@ -64,6 +64,13 @@ final class VLCPlayerModel {
     @ObservationIgnored private var isTorrent = false
     @ObservationIgnored private var hideEmbeddedSubtitles = false
     @ObservationIgnored private var appliedInitialSubtitle = false
+    /// A web stream that hasn't started by now is reported instead of spinning for ever. Torrents are left alone:
+    /// finding peers can take a while, and the torrent engine reports its own failures.
+    private static let startLimit: TimeInterval = 45
+    @ObservationIgnored private var openedAt: Date?
+    @ObservationIgnored private var webURL: URL?
+    @ObservationIgnored private var webHeaders: [String: String]?
+    @ObservationIgnored private var isDiagnosing = false
 
     init() {
         events.onStateChange = { [weak self] in self?.stateChanged() }
@@ -94,6 +101,10 @@ final class VLCPlayerModel {
         }
         guard !Task.isCancelled else { return }
 
+        if !isTorrent, playable.scheme == "http" || playable.scheme == "https" {
+            webURL = playable
+            webHeaders = headers
+        }
         let media = VLCMedia(url: playable)
         // Torrent pieces arrive unevenly, so a torrent gets a longer buffer.
         media.addOption(":network-caching=\(isTorrent ? 4000 : 1500)")
@@ -121,6 +132,7 @@ final class VLCPlayerModel {
         guard let media = pendingMedia, drawable != nil else { return }
         pendingMedia = nil
         started = true
+        openedAt = Date()
         player.media = media
         player.play()
         timer?.invalidate()
@@ -171,6 +183,7 @@ final class VLCPlayerModel {
     // MARK: VLC events
 
     private func stateChanged() {
+        if case .failed = phase { return }
         switch player.state {
         case .opening:
             if phase != .playing { phase = .loading }
@@ -199,6 +212,40 @@ final class VLCPlayerModel {
         return "VLC couldn't open this stream. The link may have expired, or the source may be unreachable."
     }
 
+    /// Called while the stream hasn't started. After `startLimit` it stops VLC and says what the server answered.
+    private func checkForStall() {
+        guard let webURL, !isDiagnosing, let openedAt,
+              Date().timeIntervalSince(openedAt) > Self.startLimit else { return }
+        isDiagnosing = true
+        player.stop()
+        let headers = webHeaders
+        Task { @MainActor in
+            let answer = await Self.serverAnswer(url: webURL, headers: headers)
+            phase = .failed("The stream didn't start in \(Int(Self.startLimit)) seconds. \(answer) "
+                            + "Go back and try another stream.")
+        }
+    }
+
+    /// Asks the server for the first two bytes with the add-on's headers and reports what came back.
+    private static func serverAnswer(url: URL, headers: [String: String]?) async -> String {
+        var request = URLRequest(url: url, timeoutInterval: 8)
+        request.setValue("bytes=0-1", forHTTPHeaderField: "Range")
+        for (name, value) in headers ?? [:] { request.setValue(value, forHTTPHeaderField: name) }
+        do {
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            bytes.task.cancel()
+            guard let http = response as? HTTPURLResponse else { return "The server gave an unusual answer." }
+            switch http.statusCode {
+            case 200, 206: return "The server does answer, so the file may be slow or in a format VLC can't open."
+            case 401, 403: return "The server refused the link (\(http.statusCode)), so it may have expired or be blocked."
+            case 404, 410: return "The server says the file is gone (\(http.statusCode))."
+            default: return "The server answered \(http.statusCode)."
+            }
+        } catch {
+            return "The server didn't answer (\(error.localizedDescription))."
+        }
+    }
+
     private func tick() {
         let now = max(Double(player.time.intValue), 0) / 1000
         let length = Double(player.media?.length.intValue ?? 0) / 1000
@@ -207,6 +254,7 @@ final class VLCPlayerModel {
         onTime?(now)
 
         if (phase == .loading || phase == .buffering), player.isPlaying, now > 0 { phase = .playing }
+        if phase == .loading || (phase == .buffering && now == 0) { checkForStall() }
         guard phase == .playing, now > 0 else { return }
 
         // If the start-time option was ignored, jump to the saved spot once.
