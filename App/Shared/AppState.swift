@@ -33,6 +33,12 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
 }
 
+/// A TMDB film or show that a link asked the app to open.
+struct PendingTitle: Equatable {
+    let tmdbID: Int
+    let isShow: Bool
+}
+
 /// A subtitle track whose cues are in memory and can be drawn by the overlay.
 struct LoadedSubtitle: Identifiable, Hashable {
     let track: SubtitleTrack
@@ -134,6 +140,8 @@ final class AppState {
     /// Goes up when a profile photo is added, changed or removed, so every avatar redraws.
     var photoRevision = 0
     var selectedSection: AppSection = .home
+    /// A film or show chosen outside the app, such as from the Apple TV Top Shelf. Home opens it, then clears this.
+    var pendingTitle: PendingTitle?
     var playing: MediaItem?
     /// The compatibility engine (VLC) is on, so MKV and other files Apple's player can't open still play.
     var router = PlaybackRouter(compatibilityEngineEnabled: true)
@@ -164,6 +172,16 @@ final class AppState {
         let saved = ProfileStore.load()
         profiles = saved
         activeProfileID = ProfileStore.loadActiveID(in: saved)
+    }
+
+    /// Handles casaplay://title/movie/<TMDB id> and casaplay://title/tv/<TMDB id>, which the Top Shelf sends.
+    func handleDeepLink(_ url: URL) {
+        guard url.scheme == "casaplay", url.host == "title" else { return }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        guard parts.count == 2, let id = Int(parts[1]), id > 0,
+              parts[0] == "movie" || parts[0] == "tv" else { return }
+        selectedSection = .home
+        pendingTitle = PendingTitle(tmdbID: id, isShow: parts[0] == "tv")
     }
 
     /// Adds a title found online and remembers it across launches.

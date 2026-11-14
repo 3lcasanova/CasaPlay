@@ -1,0 +1,17 @@
+# CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
+#
+# The normal project plus the Apple TV Top Shelf extension built into the tvOS app.
+#
+#   xcodegen generate --spec project-topshelf.yml
+#
+# The extension needs its own App ID (com.casanova.CasaPlay.TopShelf). A free Apple account can
+# create only 10 new App IDs every 7 days. If the build says "maximum App ID limit has been
+# reached", generate with plain `xcodegen generate` instead and try this one again later.
+
+include:
+  - project.yml
+
+targets:
+  CasaPlay-tvOS:
+    dependencies:
+      - target: CasaPlay-TopShelf

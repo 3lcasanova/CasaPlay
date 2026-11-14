@@ -93,6 +93,8 @@ targets:
       - package: CasaPlayKit
       - package: VLCKitSPM
         product: VLCKitSPM
+      # The Top Shelf extension is not listed here on purpose. It needs its own new App ID, and a
+      # free Apple account can only create 10 per 7 days. See project-topshelf.yml.
     settings:
       base:
         PRODUCT_NAME: CasaPlay
@@ -106,6 +108,11 @@ targets:
         CFBundleDisplayName: CasaPlay
         NSHumanReadableCopyright: "Designed by 𝐂𝓪sΔηⓞשα"
         UIUserInterfaceStyle: Dark
+        # casaplay://title/movie/603 opens that title. Top Shelf uses it.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.casanova.CasaPlay
+            CFBundleURLSchemes:
+              - casaplay
         NSLocalNetworkUsageDescription: CasaPlay looks for your Mac, NAS or media server on your home network to play your movies and shows.
         NSBonjourServices:
           - _smb._tcp
@@ -119,3 +126,26 @@ targets:
         TVDBAPIKey: $(TVDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
+
+  # Apple TV Top Shelf: when CasaPlay is in the top row of the Home Screen, this shows what is
+  # trending right now above the app row. It has its own App ID (the app's ID plus ".TopShelf"),
+  # which Xcode registers by itself on the first build. No App Group is used.
+  # It is only built into the app when you generate with project-topshelf.yml, because a free
+  # Apple account may be out of new App IDs (10 per 7 days) and then no build can be signed.
+  CasaPlay-TopShelf:
+    type: tv-app-extension
+    platform: tvOS
+    sources:
+      - App/TopShelf
+    settings:
+      base:
+        PRODUCT_NAME: CasaPlayTopShelf
+        PRODUCT_BUNDLE_IDENTIFIER: com.casanova.CasaPlay.TopShelf
+    info:
+      path: Config/TopShelf/Info.plist
+      properties:
+        CFBundleDisplayName: CasaPlay
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.tv-top-shelf
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ContentProvider
+        TMDBAPIKey: $(TMDB_API_KEY)

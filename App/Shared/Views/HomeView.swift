@@ -40,11 +40,42 @@ struct HomeView: View {
                     DetailView(itemID: id)
                 }
         }
+        // A Top Shelf item was chosen: open that title, replacing any page that was open.
+        .onChange(of: app.pendingTitle) { _, _ in openPendingTitle() }
+        .onAppear { openPendingTitle() }
         #else
         EmptyView()
         #endif
     }
 }
+
+#if os(tvOS)
+
+extension HomeView {
+    func openPendingTitle() {
+        guard let pending = app.pendingTitle else { return }
+        app.pendingTitle = nil
+        Task { @MainActor in
+            isOpening = true
+            defer { isOpening = false }
+            do {
+                let id = pending.isShow
+                    ? try await app.openShow(tmdbID: pending.tmdbID)
+                    : try await app.openMovie(tmdbID: pending.tmdbID)
+                if let id {
+                    openError = nil
+                    path = [id]
+                } else {
+                    openError = "Add your TMDB key in Profile › Online services to open this title."
+                }
+            } catch {
+                openError = error.localizedDescription
+            }
+        }
+    }
+}
+
+#endif
 
 #if !os(tvOS)
 

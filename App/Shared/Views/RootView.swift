@@ -20,6 +20,7 @@ struct RootView: View {
                 PlayerScreen(item: item)
             }
             .task { torrents.start() }
+            .onOpenURL { app.handleDeepLink($0) }
             .onChange(of: scenePhase) { _, phase in
                 // Apps can't keep peer connections open after suspension; save and close instead.
                 switch phase {
