@@ -166,6 +166,28 @@ final class ExtensionManagerTests: XCTestCase {
         XCTAssertEqual(state.schema, ExtensionState.currentSchema)
     }
 
+    func testReplacingAnInstalledAddonKeepsChoicesAndTakesTheNewLink() async throws {
+        let web = FakeWeb()
+        let old = URL(string: "https://addon.example.com/OLD-TOKEN/manifest.json")!
+        let new = URL(string: "https://addon.example.com/NEW-TOKEN/manifest.json")!
+        web.json(old.absoluteString, manifestJSON(resources: #"["stream"]"#))
+        web.json(new.absoluteString, manifestJSON(resources: #"["stream","subtitles"]"#))
+        let secrets = MemorySecretStore()
+        let m = manager(web, secrets: secrets)
+        let first = try await m.install(manifestURL: old, role: .backup)
+        await m.setEnabled(first.id, false)
+
+        let replaced = try await m.install(manifestURL: new, replaceExisting: true)
+        XCTAssertEqual(replaced.id, first.id)
+        XCTAssertEqual(replaced.secretKey, first.secretKey, "the same entry is updated, not added")
+        XCTAssertEqual(secrets.get(replaced.secretKey), new.absoluteString)
+        XCTAssertEqual(replaced.role, .backup)
+        XCTAssertFalse(replaced.isEnabled, "the on/off choice is kept")
+        let state = await m.state
+        XCTAssertEqual(state.installed.count, 1)
+        XCTAssertTrue(replaced.capabilities.contains(.subtitles), "the new manifest is what is stored")
+    }
+
     func testEnableOrderUpdateRemove() async throws {
         let web = FakeWeb()
         let a = URL(string: "https://a.example.com/manifest.json")!, b = URL(string: "https://b.example.com/manifest.json")!

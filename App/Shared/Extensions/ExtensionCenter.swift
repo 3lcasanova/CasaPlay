@@ -98,7 +98,7 @@ final class ExtensionCenter {
 
     /// Installs your own add-ons once each, on every platform. Like the starter add-ons: removing one in
     /// the app keeps it removed, and a failure (no network at launch) is retried on the next launch.
-    /// Changing a link in Secrets.xcconfig installs the new one.
+    /// Changing a link in Secrets.xcconfig swaps the installed add-on over to the new link.
     private func installPersonalAddons() async {
         let defaults = UserDefaults.standard
         for url in Self.personalAddonURLs {
@@ -111,12 +111,9 @@ final class ExtensionCenter {
             #endif
             guard !defaults.bool(forKey: doneKey) else { continue }
             do {
-                try await manager.install(manifestURL: url, role: .primary)
+                try await manager.install(manifestURL: url, role: .primary, replaceExisting: true)
                 defaults.set(true, forKey: doneKey)
                 await reload()
-            } catch ExtensionError.duplicate {
-                // Already installed by hand: nothing to do, and nothing to retry.
-                defaults.set(true, forKey: doneKey)
             } catch {
                 // Left unmarked so the next launch tries again.
             }
