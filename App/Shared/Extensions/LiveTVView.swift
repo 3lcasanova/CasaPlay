@@ -348,8 +348,13 @@ struct LiveTVView: View {
                     .focusableOnTV()
             }
 
-            channelArea
+            // Each block is one focus region, so Down/Up reaches the nearest item in the next block.
+            VStack(alignment: .leading, spacing: Metrics.s(14)) {
+                channelArea
+            }
+            .tvFocusSection()
             footer
+                .tvFocusSection()
         }
     }
 
@@ -382,6 +387,7 @@ struct LiveTVView: View {
                     }
                 }
             }
+            .tvFocusSection()
         }
         if model.catalogsOfSelectedAddon.count > 1 {
             CategoryRail {
@@ -392,6 +398,7 @@ struct LiveTVView: View {
                     }
                 }
             }
+            .tvFocusSection()
         }
         if !model.genreChoices.isEmpty {
             CategoryRail {
@@ -404,6 +411,7 @@ struct LiveTVView: View {
                          isSelected: model.genre == name) { model.selectGenre(name) }
                 }
             }
+            .tvFocusSection()
         }
     }
 

@@ -106,6 +106,7 @@ struct LibraryView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Metrics.s(14)) {
                     rail
+                        .tvFocusSection()
 
                     if app.tmdbClient == nil && ownItems.isEmpty {
                         TMDBKeyNotice()
@@ -119,7 +120,12 @@ struct LibraryView: View {
                             .focusableOnTV()
                     }
 
-                    results
+                    // One focus region, so Down from any tile above lands on the nearest poster, not only
+                    // on a poster directly beneath it.
+                    VStack(alignment: .leading, spacing: Metrics.s(14)) {
+                        results
+                    }
+                    .tvFocusSection()
                 }
                 .padding(.bottom, Metrics.sectionSpacing)
             }

@@ -95,6 +95,19 @@ extension View {
         #endif
     }
 
+    /// Apple TV: treat a block (a row of tiles, a poster grid) as one focus region. The remote moves focus to the
+    /// nearest thing in the direction pressed, but only if something sits directly that way. Without a region,
+    /// pressing Down from a tile at the right end of a row does nothing when the grid below only has posters
+    /// at the left. With one, focus lands on the closest item inside the block.
+    @ViewBuilder
+    func tvFocusSection() -> some View {
+        #if os(tvOS)
+        self.focusSection()
+        #else
+        self
+        #endif
+    }
+
     /// Full-width list rows. On Apple TV the system focus style paints a white platter under
     /// light text, which made rows unreadable; this keeps the dark card and adds an accent ring.
     @ViewBuilder

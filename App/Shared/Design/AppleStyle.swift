@@ -811,17 +811,13 @@ extension View {
         #endif
     }
 
-    /// Apple TV: the sidebar of the Apple TV app, which folds into a small pill. Everything else is unchanged.
+    /// Apple TV used to opt into the tvOS 18 sidebar here. That sidebar folds into a floating pill after a tab is
+    /// chosen, and the system keeps the pill on screen (over the search field, for one) with no way to hide it.
+    /// Apple TV now keeps the standard tab bar, which goes away when focus moves down into the content and comes
+    /// back when you press Up. To bring the sidebar back, return `self.tabViewStyle(.sidebarAdaptable)` under
+    /// `if #available(tvOS 18.0, *)`. Everything else is unchanged.
     @ViewBuilder
     func appleTVSidebar() -> some View {
-        #if os(tvOS)
-        if #available(tvOS 18.0, *) {
-            self.tabViewStyle(.sidebarAdaptable)
-        } else {
-            self
-        }
-        #else
         self
-        #endif
     }
 }
