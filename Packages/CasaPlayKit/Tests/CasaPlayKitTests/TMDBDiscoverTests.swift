@@ -179,7 +179,8 @@ final class TMDBBrowseTests: XCTestCase {
         transport.routes["/3/tv/8/images"] = HTTPResponse(status: 200, body: Data("""
         {"logos": [{"file_path": "/de.png", "iso_639_1": "de"}, {"file_path": "/none.png", "iso_639_1": null}]}
         """.utf8))
-        XCTAssertEqual(try await TMDBClient(apiKey: "test-key", transport: transport).titleLogoPath(showID: 8), "/none.png")
+        let noLanguage = try await TMDBClient(apiKey: "test-key", transport: transport).titleLogoPath(showID: 8)
+        XCTAssertEqual(noLanguage, "/none.png")
 
         transport.routes["/3/tv/9/images"] = HTTPResponse(status: 200, body: Data(#"{"logos": []}"#.utf8))
         let none = try await TMDBClient(apiKey: "test-key", transport: transport).titleLogoPath(showID: 9)
