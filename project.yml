@@ -82,6 +82,7 @@ targets:
         TVDBAPIKey: $(TVDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
+        PersonalAddonURL: $(PERSONAL_ADDON_URL)
 
   CasaPlay-tvOS:
     type: application
@@ -126,6 +127,7 @@ targets:
         TVDBAPIKey: $(TVDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
+        PersonalAddonURL: $(PERSONAL_ADDON_URL)
 
   # Apple TV Top Shelf: when CasaPlay is in the top row of the Home Screen, this shows what is
   # trending right now above the app row. It has its own App ID (the app's ID plus ".TopShelf"),

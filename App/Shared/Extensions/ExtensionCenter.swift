@@ -4,6 +4,7 @@
 // Lives as a @MainActor singleton injected via `.environment(ExtensionCenter.shared)`.
 
 import SwiftUI
+import CryptoKit
 import CasaPlayKit
 
 @MainActor
@@ -33,6 +34,7 @@ final class ExtensionCenter {
         Task {
             await reload()
             await installStarterAddons()
+            await installPersonalAddon()
         }
         // Persist quality mode across launches.
         if let raw = UserDefaults.standard.string(forKey: "qualityMode"),
@@ -73,6 +75,48 @@ final class ExtensionCenter {
                 defaults.set(true, forKey: doneKey)
                 await reload()
             }
+        }
+    }
+
+    // MARK: - Your own add-on
+
+    /// The add-on link saved in Config/Secrets.xcconfig (PERSONAL_ADDON_URL), or nil when there is none.
+    /// It is read from the app's Info.plist at build time, so the link never reaches git.
+    /// The scheme may be left off (xcconfig treats `//` as a comment); https is assumed.
+    private static var personalAddonURL: URL? {
+        var raw = (Bundle.main.object(forInfoDictionaryKey: "PersonalAddonURL") as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // An unset build setting reaches the plist as the literal "$(PERSONAL_ADDON_URL)".
+        guard !raw.isEmpty, !raw.hasPrefix("$(") else { return nil }
+        if raw.lowercased().hasPrefix("stremio://") { raw = "https://" + raw.dropFirst("stremio://".count) }
+        if !raw.contains("://") { raw = "https://" + raw }
+        guard let url = URL(string: raw), url.scheme?.lowercased() == "https", url.host != nil else { return nil }
+        return url
+    }
+
+    /// Installs your own add-on once on every platform. Like the starter add-ons: removing it in the
+    /// app keeps it removed, and a failure (no network at launch) is retried on the next launch.
+    /// Changing the link in Secrets.xcconfig installs the new one.
+    private func installPersonalAddon() async {
+        guard let url = Self.personalAddonURL else { return }
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8)).prefix(8)
+            .map { String(format: "%02x", $0) }.joined()
+        #if os(tvOS)
+        let doneKey = "personalAddon.persistentStore." + digest
+        #else
+        let doneKey = "personalAddon.installed." + digest
+        #endif
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: doneKey) else { return }
+        do {
+            try await manager.install(manifestURL: url, role: .primary)
+            defaults.set(true, forKey: doneKey)
+            await reload()
+        } catch ExtensionError.duplicate {
+            // Already installed by hand: nothing to do, and nothing to retry.
+            defaults.set(true, forKey: doneKey)
+        } catch {
+            // Left unmarked so the next launch tries again.
         }
     }
 
