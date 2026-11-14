@@ -101,6 +101,17 @@ struct SubtitleSearchView: View {
     @State private var isSearching = false
     @State private var downloadingID: Int?
     @State private var message: String?
+    @State private var nihonLanguage: NihonSubClient.Language = .english
+
+    /// Streams started this session that belong to this title: the title itself, or one of its episodes.
+    private var streamLinks: [StreamLink] {
+        app.streamLinks.values
+            .filter { link in
+                guard let linked = app.item(id: link.itemID) else { return false }
+                return linked.id == item.id || (linked.kind == .episode && linked.title.hasPrefix(item.title + " S"))
+            }
+            .sorted { $0.playedAt > $1.playedAt }
+    }
 
     private var languages: [String] {
         var list = app.activeProfile.preferredSubtitleLanguages
@@ -150,6 +161,8 @@ struct SubtitleSearchView: View {
                         .posterButtonStyle()
                         .disabled(downloadingID != nil)
                     }
+
+                    nihonSubSection
                 }
                 .padding(Metrics.screenPadding)
             }
@@ -165,6 +178,66 @@ struct SubtitleSearchView: View {
         .onAppear {
             language = app.activeProfile.preferredSubtitleLanguages.first ?? "en"
         }
+    }
+
+    // MARK: NihonSub
+
+    @ViewBuilder
+    private var nihonSubSection: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(10)) {
+            Text("Make subtitles with NihonSub")
+                .font(.casa(15, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+            Text("When nobody has published subtitles, your Mac can listen to the video and write them. It takes a few minutes. You can close this screen; the subtitles switch on when they are ready.")
+                .font(.casa(12))
+                .foregroundStyle(Theme.textSecondary)
+
+            if app.nihonSubClient == nil {
+                note("Add your Mac's address and token in Profile › Online services › NihonSub.")
+            } else if streamLinks.isEmpty {
+                note("Start the stream first, then come back here. NihonSub needs the stream's link, and CasaPlay only keeps it until you quit the app.")
+            } else {
+                OptionRow(
+                    title: "Subtitle language",
+                    options: NihonSubClient.Language.allCases,
+                    label: { $0.displayName },
+                    selection: $nihonLanguage
+                )
+                ForEach(streamLinks) { link in
+                    let status = app.nihonSubStatus[link.itemID]
+                    Button {
+                        app.generateSubtitles(link: link, language: nihonLanguage)
+                    } label: {
+                        NihonSubRow(
+                            title: app.item(id: link.itemID)?.title ?? item.title,
+                            canSend: link.canSendToMac,
+                            isRunning: status?.isRunning == true,
+                            progress: status?.progress
+                        )
+                    }
+                    .posterButtonStyle()
+                    .disabled(!link.canSendToMac || status?.isRunning == true)
+                    if let failure = status?.failure { note(failure) }
+                }
+                if streamLinks.contains(where: { app.nihonSubStatus[$0.itemID]?.isRunning == true }) {
+                    Button("Stop", role: .destructive) {
+                        for link in streamLinks { app.cancelNihonSub(for: link.itemID) }
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
+        .padding(.top, Metrics.s(10))
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(.casa(13))
+            .foregroundStyle(Theme.textPrimary)
+            .padding(Metrics.s(12))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius))
+            .focusableOnTV()
     }
 
     private func search() async {
@@ -196,6 +269,48 @@ struct SubtitleSearchView: View {
         } catch {
             message = error.localizedDescription
         }
+    }
+}
+
+private struct NihonSubRow: View {
+    let title: String
+    let canSend: Bool
+    let isRunning: Bool
+    let progress: String?
+
+    var body: some View {
+        HStack(spacing: Metrics.s(12)) {
+            Image(systemName: "waveform.badge.magnifyingglass")
+                .font(.casa(18))
+                .foregroundStyle(Theme.accent)
+                .frame(width: Metrics.s(30))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.casa(14, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                Text(detail)
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+            Spacer(minLength: Metrics.s(8))
+            if isRunning {
+                ProgressView()
+            } else if canSend {
+                Image(systemName: "sparkles")
+                    .font(.casa(18))
+                    .foregroundStyle(Theme.textSecondary)
+            }
+        }
+        .padding(Metrics.s(12))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
+    }
+
+    private var detail: String {
+        if isRunning { return progress ?? "Working" }
+        if !canSend { return "On-device torrent stream. Your Mac can't reach it. Pick a stream with a web link." }
+        return "Generate subtitles on your Mac"
     }
 }
 
@@ -239,3 +354,70 @@ private struct ResultRow: View {
         return parts.joined(separator: " · ")
     }
 }
+
+#if !os(tvOS)
+/// Subtitle-menu entries that start, follow or stop NihonSub for the title being played.
+@ViewBuilder
+func nihonSubMenuItems(app: AppState, item: MediaItem) -> some View {
+    if app.nihonSubClient != nil {
+        Divider()
+        if let status = app.nihonSubStatus[item.id], status.isRunning {
+            Button(role: .destructive) {
+                app.cancelNihonSub(for: item.id)
+            } label: {
+                Label("Stop NihonSub · \(status.progress)", systemImage: "stop.circle")
+            }
+        } else if let link = app.streamLinks[item.id], link.canSendToMac {
+            Section("Make subtitles with NihonSub") {
+                ForEach(NihonSubClient.Language.allCases, id: \.self) { language in
+                    Button {
+                        app.generateSubtitles(link: link, language: language)
+                    } label: {
+                        Label(language.displayName, systemImage: "sparkles")
+                    }
+                }
+            }
+        } else {
+            Button {} label: {
+                Label("NihonSub needs a web link", systemImage: "waveform.badge.magnifyingglass")
+            }
+            .disabled(true)
+        }
+    }
+}
+
+/// A small badge in the player showing what NihonSub is doing for this title.
+struct NihonSubStatusPill: View {
+    @Environment(AppState.self) private var app
+    let itemID: MediaItem.ID
+
+    var body: some View {
+        if let status = app.nihonSubStatus[itemID] {
+            HStack(spacing: 6) {
+                if status.isRunning {
+                    ProgressView().controlSize(.mini).tint(.white)
+                } else {
+                    Image(systemName: status.failure == nil ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                }
+                Text(status.failure ?? status.progress)
+                    .lineLimit(2)
+            }
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: 260, alignment: .leading)
+            .background(Color.black.opacity(0.6), in: Capsule())
+            .onTapGesture {
+                if !status.isRunning { app.clearNihonSubStatus(for: itemID) }
+            }
+            .task(id: status) {
+                // A finished job's badge goes away on its own; a failure stays until tapped.
+                guard !status.isRunning, status.failure == nil else { return }
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                app.clearNihonSubStatus(for: itemID)
+            }
+        }
+    }
+}
+#endif

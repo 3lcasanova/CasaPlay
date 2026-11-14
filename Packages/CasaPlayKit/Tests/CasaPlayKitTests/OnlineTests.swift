@@ -127,6 +127,9 @@ final class OpenSubtitlesTests: XCTestCase {
 
         let byTitle = try client.searchRequest(.title("Night Ferry", year: 2025), languages: ["en"])
         XCTAssertEqual(byTitle.url?.query, "languages=en&query=night%20ferry&year=2025")
+
+        let episode = try client.searchRequest(.episode(parentIMDb: "tt0903747", season: 2, episode: 5), languages: ["en"])
+        XCTAssertEqual(episode.url?.query, "episode_number=5&languages=en&parent_imdb_id=903747&season_number=2")
     }
 
     func testSearchParsesAndRanks() async throws {

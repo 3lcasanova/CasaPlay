@@ -100,7 +100,7 @@ struct AvatarView: View {
     }
 }
 
-/// A selectable pill used for filters and settings.
+/// A selectable pill used for filters and settings: frosted glass, amber when on, a white ring on focus.
 struct ChipButton: View {
     let title: String
     let isSelected: Bool
@@ -108,14 +108,28 @@ struct ChipButton: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.casa(13, weight: .semibold))
-                .foregroundStyle(isSelected ? Theme.onAccent : Theme.textPrimary)
-                .padding(.horizontal, Metrics.s(12))
-                .padding(.vertical, Metrics.s(6))
-                .background(isSelected ? Theme.accent : Theme.surfaceStrong, in: Capsule())
+            ChipLabel(title: title, isSelected: isSelected)
         }
-        .posterButtonStyle()
+        .premiumCardStyle(focusScale: 1.07)
+    }
+}
+
+private struct ChipLabel: View {
+    let title: String
+    let isSelected: Bool
+    @Environment(\.cardFocused) private var focused
+
+    var body: some View {
+        Text(title)
+            .font(.casa(13, weight: .semibold))
+            .foregroundStyle(isSelected ? Theme.onAccent : Theme.textPrimary)
+            .padding(.horizontal, Metrics.s(14))
+            .padding(.vertical, Metrics.s(7))
+            .background(isSelected ? Theme.accent : Color.white.opacity(0.14), in: Capsule())
+            .overlay(
+                Capsule().strokeBorder(focused ? Color.white : Color.white.opacity(isSelected ? 0 : 0.1),
+                                       lineWidth: focused ? 3 : 1)
+            )
     }
 }
 
@@ -242,21 +256,23 @@ struct LandscapeCard: View {
     }
 }
 
-/// A titled, horizontally scrolling row.
+/// A titled, horizontally scrolling row. With a destination, the title ends in a chevron and opens that
+/// section of the app (iPhone and iPad).
 struct Shelf<Content: View>: View {
+    @Environment(AppState.self) private var app
     let title: String
+    let destination: AppSection?
     private let content: () -> Content
 
-    init(title: String, @ViewBuilder content: @escaping () -> Content) {
+    init(title: String, destination: AppSection? = nil, @ViewBuilder content: @escaping () -> Content) {
         self.title = title
+        self.destination = destination
         self.content = content
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Metrics.s(8)) {
-            Text(title)
-                .font(.casa(19, weight: .semibold))
-                .foregroundStyle(Theme.textPrimary)
+            header
                 .padding(.horizontal, Metrics.screenPadding)
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -267,6 +283,23 @@ struct Shelf<Content: View>: View {
                 .padding(.vertical, Platform.isTV ? 28 : 0)
             }
         }
+    }
+
+    @ViewBuilder private var header: some View {
+        #if os(tvOS)
+        ShelfTitle(title: title)
+        #else
+        if let destination {
+            Button {
+                app.selectedSection = destination
+            } label: {
+                ShelfTitle(title: title, showsChevron: true)
+            }
+            .buttonStyle(.plain)
+        } else {
+            ShelfTitle(title: title)
+        }
+        #endif
     }
 }
 

@@ -49,7 +49,9 @@ targets:
     settings:
       base:
         PRODUCT_NAME: CasaPlay
-        PRODUCT_BUNDLE_IDENTIFIER: com.casanova.casaplay
+        # Same ID as the tvOS app: it is already registered, and a free Apple account can only
+        # create 10 new App IDs per 7 days.
+        PRODUCT_BUNDLE_IDENTIFIER: com.casanova.CasaPlay
         TARGETED_DEVICE_FAMILY: "1,2"
     info:
       path: Config/iOS/Info.plist
@@ -57,26 +59,6 @@ targets:
         CFBundleDisplayName: CasaPlay
         NSHumanReadableCopyright: "Designed by 𝐂𝓪sΔηⓞשα"
         UILaunchScreen: {}
-        CFBundleURLTypes:
-          - CFBundleURLName: com.casanova.casaplay.magnet
-            CFBundleURLSchemes:
-              - magnet
-        CFBundleDocumentTypes:
-          - CFBundleTypeName: BitTorrent file
-            LSHandlerRank: Alternate
-            LSItemContentTypes:
-              - org.bittorrent.torrent
-        UTImportedTypeDeclarations:
-          - UTTypeIdentifier: org.bittorrent.torrent
-            UTTypeDescription: BitTorrent file
-            UTTypeConformsTo:
-              - public.data
-            UTTypeTagSpecification:
-              public.filename-extension:
-                - torrent
-              public.mime-type:
-                - application/x-bittorrent
-        LSSupportsOpeningDocumentsInPlace: false
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -93,7 +75,11 @@ targets:
           - _http._tcp
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+          # Live TV channels are often served over plain HTTP. This lets the video player open
+          # them; everything else (add-ons, API calls, pictures) still has to use HTTPS.
+          NSAllowsArbitraryLoadsForMedia: true
         TMDBAPIKey: $(TMDB_API_KEY)
+        TVDBAPIKey: $(TVDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)
 
@@ -126,6 +112,10 @@ targets:
           - _http._tcp
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+          # Live TV channels are often served over plain HTTP. This lets the video player open
+          # them; everything else (add-ons, API calls, pictures) still has to use HTTPS.
+          NSAllowsArbitraryLoadsForMedia: true
         TMDBAPIKey: $(TMDB_API_KEY)
+        TVDBAPIKey: $(TVDB_API_KEY)
         OMDbAPIKey: $(OMDB_API_KEY)
         OpenSubtitlesAPIKey: $(OPENSUBTITLES_API_KEY)

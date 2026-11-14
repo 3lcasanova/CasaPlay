@@ -16,6 +16,8 @@ struct StreamSourcesView: View {
 
     @State private var results = SourceResults()
     @State private var showQualityPicker = false
+    /// The source chip that is on: only streams from that add-on are listed. Nil lists every source.
+    @State private var sourceFilter: String?
     @State private var isAddingTorrent = false
     @State private var addTorrentError: String?
     /// The torrent whose file list is open, pushed inside this screen's own navigation.
@@ -45,13 +47,27 @@ struct StreamSourcesView: View {
 
                     Spacer(minLength: 0)
 
-                    // Per-provider status chips
+                    // One chip per source with its status. Select a chip to list only that source's streams.
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: Metrics.s(6)) {
+                            Button {
+                                sourceFilter = nil
+                            } label: {
+                                SourceAllChip(isSelected: activeSource == nil)
+                            }
+                            .premiumCardStyle(focusScale: 1.08)
+
                             ForEach(results.outcomes) { outcome in
-                                ProviderStatusChip(outcome: outcome)
+                                Button {
+                                    sourceFilter = activeSource == outcome.providerID ? nil : outcome.providerID
+                                } label: {
+                                    ProviderStatusChip(outcome: outcome, isSelected: activeSource == outcome.providerID)
+                                }
+                                .premiumCardStyle(focusScale: 1.08)
                             }
                         }
+                        .padding(.horizontal, Platform.isTV ? 8 : 0)
+                        .padding(.vertical, Platform.isTV ? 14 : 2)
                     }
                 }
                 .padding(.horizontal, Metrics.screenPadding)
@@ -111,6 +127,23 @@ struct StreamSourcesView: View {
         }
     }
 
+    // MARK: - Source filter
+
+    /// The chosen source, unless it is no longer among the sources (a new search starts the list over).
+    private var activeSource: String? {
+        guard let sourceFilter, results.outcomes.contains(where: { $0.providerID == sourceFilter }) else { return nil }
+        return sourceFilter
+    }
+
+    private var activeSourceName: String? {
+        results.outcomes.first { $0.providerID == activeSource }?.name
+    }
+
+    private var shownStreams: [StreamCandidate] {
+        guard let activeSource else { return results.ranked }
+        return results.ranked.filter { $0.providerID == activeSource }
+    }
+
     // MARK: - Stream list
 
     private var streamList: some View {
@@ -131,7 +164,16 @@ struct StreamSourcesView: View {
                         .foregroundStyle(Theme.textSecondary)
                         .multilineTextAlignment(.center)
                 }
-                ForEach(results.ranked) { candidate in
+                if shownStreams.isEmpty, !results.ranked.isEmpty, let name = activeSourceName {
+                    Text("\(name) has no streams in this list. Choose All to see the other sources.")
+                        .font(.casa(14))
+                        .foregroundStyle(Theme.textPrimary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, Metrics.s(16))
+                        .focusableOnTV()
+                }
+                ForEach(shownStreams) { candidate in
                     StreamCandidateRow(candidate: candidate, isBest: results.bestChoice?.id == candidate.id) {
                         play(candidate)
                     }
@@ -168,7 +210,7 @@ struct StreamSourcesView: View {
     /// Apple TV has no browser, so there the list is information only.
     @ViewBuilder
     private var whereToWatchSection: some View {
-        let services = results.whereToWatch
+        let services = results.whereToWatch.filter { activeSource == nil || $0.providerID == activeSource }
         if !services.isEmpty {
             VStack(alignment: .leading, spacing: Metrics.s(8)) {
                 Text("Where to watch")
@@ -504,24 +546,46 @@ private struct WhereToWatchRow: View {
 
 private struct ProviderStatusChip: View {
     let outcome: ProviderOutcome
+    let isSelected: Bool
+    @Environment(\.cardFocused) private var focused
+
     var body: some View {
         HStack(spacing: 4) {
             Circle()
                 .fill(outcome.status.color)
                 .frame(width: 6, height: 6)
             Text(outcome.name)
-                .font(.casa(10, weight: .semibold))
-                .foregroundStyle(Theme.textSecondary)
+                .font(.casa(11, weight: .semibold))
+                .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
             if case .finished(let count, _) = outcome.status {
                 // "0 of 20" when results were discarded as a different title, so the count
                 // is not mistaken for streams that should be listed.
                 Text(outcome.rejected > 0 ? "\(max(count - outcome.rejected, 0)) of \(count) matched" : "\(count)")
-                    .font(.casa(10)).foregroundStyle(Theme.textSecondary)
+                    .font(.casa(11)).foregroundStyle(Theme.textSecondary)
             }
         }
-        .padding(.horizontal, Metrics.s(7))
-        .padding(.vertical, Metrics.s(3))
-        .background(Theme.surface, in: Capsule())
+        .padding(.horizontal, Metrics.s(8))
+        .padding(.vertical, Metrics.s(4))
+        .background(isSelected ? Theme.accent.opacity(0.32) : Theme.surface, in: Capsule())
+        .overlay(Capsule().strokeBorder(focused ? Color.white : (isSelected ? Theme.accent : Color.clear),
+                                        lineWidth: focused ? 3 : 1.5))
+    }
+}
+
+/// The first chip: list the streams from every source.
+private struct SourceAllChip: View {
+    let isSelected: Bool
+    @Environment(\.cardFocused) private var focused
+
+    var body: some View {
+        Text("All")
+            .font(.casa(11, weight: .semibold))
+            .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
+            .padding(.horizontal, Metrics.s(10))
+            .padding(.vertical, Metrics.s(4))
+            .background(isSelected ? Theme.accent.opacity(0.32) : Theme.surface, in: Capsule())
+            .overlay(Capsule().strokeBorder(focused ? Color.white : (isSelected ? Theme.accent : Color.clear),
+                                            lineWidth: focused ? 3 : 1.5))
     }
 }
 

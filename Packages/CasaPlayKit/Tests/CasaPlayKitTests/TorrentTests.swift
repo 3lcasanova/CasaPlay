@@ -752,3 +752,32 @@ final class TorrentProviderTests: XCTestCase {
         XCTAssertNotNil(items[1].magnet)
     }
 }
+
+// MARK: - Finding peers
+
+/// Counts calls from a @Sendable closure.
+private final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
+}
+
+final class PeerDiscoveryTests: XCTestCase {
+    /// Most addresses a tracker returns never answer. Trying only the first 50 of them left a
+    /// stream with a handful of peers, so every known address must get its turn.
+    func testEveryKnownPeerIsTriedEvenWhenNoneAnswer() async throws {
+        let t = SyntheticTorrent(files: [(["Movie.mp4"], randomData(16384 * 4, seed: 50))], webSeed: nil)
+        let tried = CallCounter()
+        let engine = TorrentEngine(root: tempRoot(), transport: RangeServer(files: [:]),
+                                   peerFactory: { _ in tried.increment(); return nil })
+        let session = try await engine.add(magnet: "magnet:?xt=urn:btih:\(t.infoHash.hex)")
+        let addresses = (1...120).map { PeerAddress(host: "192.0.2.\($0)", port: 6881) }
+        await session.addPeers(addresses)
+        XCTAssertEqual(tried.value, 120)
+        // Asking again right away doesn't redial addresses that were just tried.
+        await session.addPeers(addresses)
+        XCTAssertEqual(tried.value, 120)
+        await engine.remove(t.infoHash, deleteData: true)
+    }
+}

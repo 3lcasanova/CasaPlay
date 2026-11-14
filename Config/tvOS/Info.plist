@@ -22,6 +22,8 @@
 	<string>1</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
+		<key>NSAllowsArbitraryLoadsForMedia</key>
+		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
@@ -40,6 +42,8 @@
 	<string>$(OPENSUBTITLES_API_KEY)</string>
 	<key>TMDBAPIKey</key>
 	<string>$(TMDB_API_KEY)</string>
+	<key>TVDBAPIKey</key>
+	<string>$(TVDB_API_KEY)</string>
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>
 </dict>

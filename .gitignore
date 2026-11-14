@@ -18,3 +18,8 @@ DerivedData/
 
 # API keys. Keep them out of git; see Config/Secrets.example.xcconfig.
 Config/Secrets.xcconfig
+
+# NihonSub bridge (token and log stay on this Mac)
+companion/.bridge-token
+companion/nihonsub.log
+companion/nihonsub/

@@ -80,6 +80,8 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     public var verification: VerificationState = .notChecked
     public var fetchedAt: Date
     public var bingeGroup: String?
+    /// How many peers (seeders) the add-on says a torrent has, read from its label. Nil when none is shown.
+    public var peers: Int?
 
     public init(id: String, providerID: String, providerName: String,
                 providerRole: ProviderRole, providerPriority: Int,
@@ -97,6 +99,19 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
         self.advertised = advertised
         self.fetchedAt = fetchedAt
         self.bingeGroup = bingeGroup
+        self.peers = Self.peerCount(in: label)
+    }
+
+    /// Reads the peer count an add-on prints in its label: "👥 4331", "👤 12", "Seeders: 1,204" or "seeds 1.2k".
+    public static func peerCount(in label: String) -> Int? {
+        let pattern = #"(?:👥|👤|🌱|\b(?:seeders?|seeds?|peers?)\b)\s*[:=]?\s*\d+(?:[.,]\d+)*(?:[kK]\b)?"#
+        guard let range = label.range(of: pattern, options: [.regularExpression, .caseInsensitive]) else { return nil }
+        let number = String(label[range].drop(while: { !$0.isNumber }))
+        if number.lowercased().hasSuffix("k") {
+            let value = Double(number.dropLast().replacingOccurrences(of: ",", with: ".")) ?? 0
+            return Int((value * 1000).rounded())
+        }
+        return Int(number.filter(\.isNumber))
     }
 
     /// Provider links often expire; re-resolve before playing after this long.
@@ -440,10 +455,15 @@ public actor SourceAggregator {
             let order: (StreamCandidate, StreamCandidate) -> Bool = { a, b in
                 let ta = QualityRanking.tier(a.advertised, a.verification), tb = QualityRanking.tier(b.advertised, b.verification)
                 if ta != tb { return ta < tb }
+                // Within the same quality, the stream with the most peers goes to the very top.
+                let pa = a.peers ?? 0, pb = b.peers ?? 0
+                if pa != pb { return pa > pb }
                 if a.providerPriority != b.providerPriority { return a.providerPriority < b.providerPriority }
                 let ba = a.verification.verified?.bitrate ?? 0, bb = b.verification.verified?.bitrate ?? 0
                 if ba != bb { return ba > bb }
-                return (a.advertised.sizeBytes ?? 0) > (b.advertised.sizeBytes ?? 0)
+                let sa = a.advertised.sizeBytes ?? 0, sb = b.advertised.sizeBytes ?? 0
+                if sa != sb { return sa > sb }
+                return a.id.compare(b.id, options: .numeric) == .orderedAscending   // keeps rows from shuffling between updates
             }
             results.ranked = admitted.sorted(by: order)
             let admittedIDs = Set(admitted.map(\.id))

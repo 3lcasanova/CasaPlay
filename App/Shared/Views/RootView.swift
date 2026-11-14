@@ -28,9 +28,6 @@ struct RootView: View {
                 default: break
                 }
             }
-            .onOpenURL { url in
-                Task { await openTorrentLink(url) }
-            }
     }
 
     private var selection: Binding<AppSection> {
@@ -61,6 +58,7 @@ struct RootView: View {
                     .tag(section)
             }
         }
+        .appleTVSidebar()
     }
 
     #if !os(tvOS)
@@ -89,27 +87,10 @@ struct RootView: View {
         case .home: HomeView()
         case .movies: LibraryView(mode: .movies)
         case .series: LibraryView(mode: .series)
-        case .favorites: LibraryView(mode: .favorites)
-        case .torrents: TorrentsView()
+        case .iptv: LiveTVView()
         case .extensions: ExtensionsView()
         case .servers: ServersView()
         case .profile: ProfileView()
         }
-    }
-
-    /// magnet: links and .torrent files opened from other apps (iPhone and iPad).
-    private func openTorrentLink(_ url: URL) async {
-        if url.scheme?.lowercased() == "magnet" {
-            _ = await torrents.add(magnet: url.absoluteString)
-        } else if url.isFileURL, url.pathExtension.lowercased() == "torrent" {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 16 * 1024 * 1024,
-                  let data = try? Data(contentsOf: url) else { return }
-            _ = await torrents.add(torrentFile: data)
-        } else {
-            return
-        }
-        app.selectedSection = .torrents
     }
 }

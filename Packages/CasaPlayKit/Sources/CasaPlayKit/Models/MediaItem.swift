@@ -54,8 +54,14 @@ public struct MediaItem: Identifiable, Codable, Hashable, Sendable {
     public var backdropPath: String?
     /// TMDB numeric show ID — present on TV show cards; enables episode browsing.
     public var tmdbShowID: Int?
+    /// TMDB numeric film ID — present on films opened from TMDB; used to find related titles.
+    public var tmdbMovieID: Int?
     /// Number of seasons reported by TMDB — used to build the season picker.
     public var numberOfSeasons: Int?
+    /// For an episode: the show's IMDb ID, and the season and episode numbers. Subtitles are searched by these.
+    public var parentIMDbID: String?
+    public var seasonNumber: Int?
+    public var episodeNumber: Int?
     public var streamURL: URL?
     /// HTTP headers to inject when playing this item (e.g. Referer from a Stremio proxyHeaders manifest).
     public var streamHeaders: [String: String]?

@@ -589,7 +589,7 @@ private struct ErrorNote: View {
 
 struct TorrentPrivacyNote: View {
     var body: some View {
-        Text("BitTorrent is not private: trackers and every peer you connect to can see this device's public IP address and which torrent it is sharing. While uploading is on, peers also receive pieces from you. Change this in Torrents › Settings & privacy.")
+        Text("BitTorrent is not private: trackers and every peer you connect to can see this device's public IP address and which torrent it is sharing. While uploading is on, peers also receive pieces from you. Change this in Profile › Torrent settings.")
             .font(.casa(12))
             .foregroundStyle(Theme.textSecondary)
             .focusableOnTV()

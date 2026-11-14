@@ -533,6 +533,11 @@ struct VLCPlayerScreen: View {
         let files = app.subtitleOptions(for: item.id)
         let activeFile = app.activeSubtitle(for: item.id)
         let isOff = model.subtitleIndex == -1 && activeFile == nil
+        #if os(tvOS)
+        let canMakeSubtitles = false
+        #else
+        let canMakeSubtitles = app.nihonSubClient != nil
+        #endif
         return Menu {
             Button {
                 model.selectSubtitle(-1)
@@ -567,10 +572,13 @@ struct VLCPlayerScreen: View {
                     }
                 }
             }
+            #if !os(tvOS)
+            nihonSubMenuItems(app: app, item: item)
+            #endif
         } label: {
             menuIcon(isOff ? "captions.bubble" : "captions.bubble.fill")
         }
-        .disabled(embedded.isEmpty && files.isEmpty)
+        .disabled(embedded.isEmpty && files.isEmpty && !canMakeSubtitles)
         .accessibilityLabel("Subtitles")
     }
 

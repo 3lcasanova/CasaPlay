@@ -77,6 +77,7 @@ struct PlayerScreen: View {
                             .foregroundStyle(Color.white, Color.black.opacity(0.55))
                     }
                     .accessibilityLabel("Close player")
+                    NihonSubStatusPill(itemID: item.id)
                     Spacer()
                     // The compatibility player has its own subtitle menu.
                     if !usesVLC { subtitleMenu }
@@ -110,6 +111,7 @@ struct PlayerScreen: View {
                     }
                 }
             }
+            nihonSubMenuItems(app: app, item: item)
         } label: {
             Image(systemName: active == nil ? "captions.bubble" : "captions.bubble.fill")
                 .font(.system(size: 22, weight: .semibold))
@@ -118,7 +120,8 @@ struct PlayerScreen: View {
                 .background(Color.black.opacity(0.55), in: Circle())
         }
         .accessibilityLabel("Subtitles")
-        .opacity(options.isEmpty ? 0 : 1)
+        // Hidden until there is something to pick, unless NihonSub can make subtitles.
+        .opacity(options.isEmpty && app.nihonSubClient == nil ? 0 : 1)
     }
     #endif
 

@@ -2,6 +2,9 @@
 
 import SwiftUI
 import CasaPlayKit
+#if !os(tvOS)
+import PhotosUI
+#endif
 
 struct ProfileView: View {
     @Environment(AppState.self) private var app
@@ -57,6 +60,8 @@ struct ProfileView: View {
                     }
 
                     VStack(alignment: .leading, spacing: Metrics.s(12)) {
+                        ProfilePhotoRows()
+
                         NavigationLink {
                             SettingsView()
                         } label: {
@@ -73,8 +78,19 @@ struct ProfileView: View {
                         } label: {
                             SettingsLinkRow(
                                 title: "Online services",
-                                detail: "TMDB, IMDb ratings and OpenSubtitles",
+                                detail: "TMDB, TheTVDB, IMDb ratings and OpenSubtitles",
                                 symbol: "globe"
+                            )
+                        }
+                        .posterButtonStyle()
+
+                        NavigationLink {
+                            TorrentSettingsView()
+                        } label: {
+                            SettingsLinkRow(
+                                title: "Torrent settings",
+                                detail: "Cache size, uploading and privacy",
+                                symbol: "arrow.down.circle"
                             )
                         }
                         .posterButtonStyle()
@@ -124,7 +140,7 @@ private struct ProfileTile: View {
     var body: some View {
         VStack(spacing: Metrics.s(8)) {
             ZStack(alignment: .topTrailing) {
-                AvatarView(text: profile.glyph, hue: profile.hue, size: Metrics.s(72))
+                ProfileAvatar(profile: profile, size: Metrics.s(72))
                     .overlay(
                         Circle()
                             .stroke(isSelected ? Theme.accent : Color.clear, lineWidth: Metrics.s(3))
@@ -223,6 +239,7 @@ private struct SettingsLinkRow: View {
     let title: String
     let detail: String
     let symbol: String
+    var showsChevron = true
 
     var body: some View {
         HStack(spacing: Metrics.s(14)) {
@@ -239,12 +256,152 @@ private struct SettingsLinkRow: View {
                     .foregroundStyle(Theme.textSecondary)
             }
             Spacer(minLength: Metrics.s(8))
-            Image(systemName: "chevron.right")
-                .font(.casa(13, weight: .semibold))
-                .foregroundStyle(Theme.textSecondary)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.casa(13, weight: .semibold))
+                    .foregroundStyle(Theme.textSecondary)
+            }
         }
         .padding(Metrics.s(14))
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
     }
 }
+
+// MARK: - Profile photo
+
+/// Pick a photo for the profile that is in use, or take it away. iPhone and iPad choose from the photo
+/// library. Apple TV has no photo library, so it takes the web address of a picture instead.
+private struct ProfilePhotoRows: View {
+    @Environment(AppState.self) private var app
+    @State private var message: String?
+    #if os(tvOS)
+    @State private var showingLink = false
+    #else
+    @State private var picked: PhotosPickerItem?
+    #endif
+
+    private var profile: Profile { app.activeProfile }
+
+    private var hasPhoto: Bool {
+        _ = app.photoRevision
+        return ProfilePhotoStore.load(for: profile.id) != nil
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(12)) {
+            chooser
+
+            if hasPhoto {
+                Button(role: .destructive) {
+                    app.removeProfilePhoto(for: profile.id)
+                } label: {
+                    SettingsLinkRow(title: "Remove photo",
+                                    detail: "Go back to the coloured letter for \(profile.name)",
+                                    symbol: "trash",
+                                    showsChevron: false)
+                }
+                .posterButtonStyle()
+            }
+
+            if let message {
+                Text(message)
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .focusableOnTV()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chooser: some View {
+        #if os(tvOS)
+        Button {
+            showingLink = true
+        } label: {
+            SettingsLinkRow(title: "Profile photo",
+                            detail: "Use a picture from a web address for \(profile.name)",
+                            symbol: "person.crop.circle.badge.plus")
+        }
+        .posterButtonStyle()
+        .fullScreenCover(isPresented: $showingLink) {
+            PhotoLinkSheet(profile: profile)
+        }
+        #else
+        PhotosPicker(selection: $picked, matching: .images) {
+            SettingsLinkRow(title: "Profile photo",
+                            detail: "Choose a photo for \(profile.name)",
+                            symbol: "person.crop.circle.badge.plus",
+                            showsChevron: false)
+        }
+        .buttonStyle(.plain)
+        .onChange(of: picked) { _, item in
+            guard let item else { return }
+            let id = profile.id
+            Task { @MainActor in
+                let data = try? await item.loadTransferable(type: Data.self)
+                if let data, app.setProfilePhoto(data, for: id) {
+                    message = nil
+                } else {
+                    message = "That photo couldn't be used. Try another one."
+                }
+                picked = nil
+            }
+        }
+        #endif
+    }
+}
+
+#if os(tvOS)
+/// Apple TV: type the web address of a picture and it becomes the profile photo.
+private struct PhotoLinkSheet: View {
+    @Environment(AppState.self) private var app
+    @Environment(\.dismiss) private var dismiss
+    let profile: Profile
+    @State private var text = ""
+    @State private var isLoading = false
+    @State private var message: String?
+
+    private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Picture web address") {
+                    TextField("https://example.com/photo.jpg", text: $text)
+                        .autocorrectionDisabled()
+                }
+                Section {
+                    Button(isLoading ? "Loading…" : "Use this picture") {
+                        Task { await load() }
+                    }
+                    .disabled(isLoading || trimmed.isEmpty)
+                    Button("Cancel") { dismiss() }
+                }
+                if let message {
+                    Section { Text(message) }
+                }
+            }
+        }
+    }
+
+    private func load() async {
+        guard let url = URL(string: trimmed), url.scheme?.hasPrefix("http") == true else {
+            message = "Enter a web address that starts with https://"
+            return
+        }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if app.setProfilePhoto(data, for: profile.id) {
+                dismiss()
+            } else {
+                message = "That address isn't a picture."
+            }
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+}
+#endif

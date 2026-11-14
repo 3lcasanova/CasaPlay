@@ -14,7 +14,7 @@ enum Platform {
 }
 
 enum Theme {
-    static let background = Color(red: 0.027, green: 0.031, blue: 0.043)
+    static let background = Color.black
     static let surface = Color.white.opacity(0.07)
     static let surfaceStrong = Color.white.opacity(0.16)
     static let textPrimary = Color(red: 0.953, green: 0.945, blue: 0.925)

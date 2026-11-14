@@ -46,7 +46,16 @@ public actor TorrentSession: PeerHost {
     private var peers: [ObjectIdentifier: PeerConnection] = [:]
     private var peerTasks: [Task<Void, Never>] = []
     private var knownPeers: Set<PeerAddress> = []
-    private var attemptedPeers: Set<PeerAddress> = []
+    /// When each peer address was last tried. An address is tried again after `retryPeerAfter`.
+    private var attemptedPeers: [PeerAddress: Date] = [:]
+    /// Connections that are connecting or connected right now.
+    private var liveAttempts: [ObjectIdentifier: PeerAddress] = [:]
+    /// Trackers that already have an announce loop, so none is asked twice at once.
+    private var announcing: Set<URL> = []
+    private var maintainingPeers = false
+    /// Set when the network is stopped on purpose, so lost peers aren't replaced meanwhile.
+    private var networkStopped = false
+    private static let retryPeerAfter: TimeInterval = 90
     private var activeWebSeeds = 0
     private var metadataWaiters: [(id: UUID, continuation: CheckedContinuation<Void, Error>)] = []
     private var pieceWaiters: [Int: [(id: UUID, continuation: CheckedContinuation<Void, Error>)]] = [:]
@@ -103,6 +112,7 @@ public actor TorrentSession: PeerHost {
     public func start() async {
         guard !stopped else { return }
         paused = false
+        networkStopped = false
         pauseReason = nil
         lastError = nil
         if currentMetainfo == nil {
@@ -178,7 +188,11 @@ public actor TorrentSession: PeerHost {
         peers.values.forEach { $0.stop() }
         peers = [:]
         activeWebSeeds = 0
-        attemptedPeers = []
+        attemptedPeers = [:]
+        liveAttempts = [:]
+        announcing = []
+        maintainingPeers = false
+        networkStopped = true
     }
 
     private func fail(_ error: Error) {
@@ -494,22 +508,49 @@ public actor TorrentSession: PeerHost {
         }
     }
 
-    /// Used only when a torrent lists no tracker CasaPlay can reach.
+    /// Public trackers. They are added to every public torrent: the trackers in a magnet link are
+    /// often dead, and a handful of peers is not enough to stream from.
     static let fallbackTrackers: [URL] = [
         "udp://tracker.opentrackr.org:1337/announce",
         "http://tracker.opentrackr.org:1337/announce",
         "udp://open.stealth.si:80/announce",
         "udp://tracker.torrent.eu.org:451/announce",
-        "udp://exodus.desync.com:6969/announce"
+        "udp://exodus.desync.com:6969/announce",
+        "udp://open.tracker.cl:1337/announce",
+        "udp://tracker.dler.org:6969/announce",
+        "udp://tracker.tiny-vps.com:6969/announce"
     ].compactMap(URL.init(string:))
+
+    /// A private torrent (BEP 27) must only use its own tracker.
+    private var isPrivate: Bool {
+        guard let info = currentMetainfo else { return false }
+        return info.infoDictionary.range(of: Data("7:privatei1e".utf8)) != nil
+    }
 
     private func startPeerDiscovery() {
         guard !paused, !stopped, peerFactory != nil else { return }
+        networkStopped = false
         var trackers = Array(Set((currentMetainfo?.trackers ?? []) + (magnet?.trackers ?? [])))
-            .filter(canAnnounce)
-        if trackers.isEmpty { trackers = Self.fallbackTrackers.filter(canAnnounce) }
-        for tracker in trackers {
+        if !isPrivate {
+            for url in Self.fallbackTrackers where !trackers.contains(url) { trackers.append(url) }
+        }
+        for tracker in trackers.filter(canAnnounce) where announcing.insert(tracker).inserted {
             workers.append(Task { await self.trackerLoop(tracker) })
+        }
+        if !maintainingPeers {
+            maintainingPeers = true
+            workers.append(Task { await self.peerMaintenanceLoop() })
+        }
+    }
+
+    /// Keeps looking for peers while there are few. Trackers are only asked every few minutes,
+    /// and many of the addresses they give never answer, so without this a swarm could sit at
+    /// a handful of peers and a stream would keep buffering.
+    private func peerMaintenanceLoop() async {
+        while !Task.isCancelled, !paused, !stopped {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            guard !Task.isCancelled else { return }
+            if peers.count < settings.maxPeers { connectMorePeers() }
         }
     }
 
@@ -545,6 +586,8 @@ public actor TorrentSession: PeerHost {
                 event = nil
                 failures = 0
                 wait = response.interval
+                // With few peers, ask again soon instead of waiting out the tracker's interval.
+                if peers.count < settings.maxPeers / 2 { wait = min(wait, 120) }
                 knownPeers.formUnion(response.peers)
                 connectMorePeers()
             } else {
@@ -563,14 +606,27 @@ public actor TorrentSession: PeerHost {
     }
 
     private func connectMorePeers() {
-        guard !paused, !stopped, let factory = peerFactory else { return }
+        guard !paused, !stopped, !networkStopped, let factory = peerFactory else { return }
         let complete = picker.map { p in store.map { p.isComplete(have: $0.have) } ?? false } ?? false
         if complete && !settings.seedAfterDownload { return }
-        for address in knownPeers.subtracting(attemptedPeers) {
-            guard attemptedPeers.count - 0 < settings.maxPeers + 20, peers.count < settings.maxPeers else { break }
-            attemptedPeers.insert(address)
+        let now = Date()
+        let live = Set(liveAttempts.values)
+        // Addresses never tried come first, then the ones tried longest ago.
+        let candidates = knownPeers
+            .filter { address in
+                guard !live.contains(address) else { return false }
+                guard let last = attemptedPeers[address] else { return true }
+                return now.timeIntervalSince(last) > Self.retryPeerAfter
+            }
+            .sorted { (attemptedPeers[$0] ?? .distantPast) < (attemptedPeers[$1] ?? .distantPast) }
+        for address in candidates {
+            // Connecting and connected peers together stay near the limit. A few extra attempts
+            // are allowed because many addresses from trackers never answer.
+            guard liveAttempts.count < settings.maxPeers + 10, peers.count < settings.maxPeers else { break }
+            attemptedPeers[address] = now
             guard let transport = factory(address) else { continue }
             let connection = PeerConnection(address: address, transport: transport, host: self)
+            liveAttempts[ObjectIdentifier(connection)] = address
             peerTasks.append(Task { await connection.run() })
         }
     }
@@ -588,6 +644,9 @@ public actor TorrentSession: PeerHost {
 
     func peerDisconnected(_ connection: PeerConnection) {
         peers[ObjectIdentifier(connection)] = nil
+        liveAttempts[ObjectIdentifier(connection)] = nil
+        // A lost or unreachable peer is replaced right away from the addresses already known.
+        connectMorePeers()
     }
 
     // MARK: Stats and persistence

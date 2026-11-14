@@ -1,6 +1,7 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// Season/episode browser for a TV show fetched from TMDB.
+// Season/episode browser for a TV show. TMDB supplies the episode list; TheTVDB backs it up
+// when TMDB has none and fills in missing titles, summaries and pictures.
 // Presented as a sheet from DetailView when item.tmdbShowID is set.
 // Tapping an episode opens StreamSourcesView for that S/E pair.
 
@@ -15,9 +16,10 @@ struct EpisodesView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedSeason = 1
-    @State private var episodes: [TMDBEpisode] = []
+    @State private var episodes: [EpisodeInfo] = []
     @State private var isLoading = false
     @State private var loadError: String?
+    @State private var tvdbSeriesID: Int?
     @State private var streamingEpisode: EpisodeTarget?
 
     var body: some View {
@@ -27,7 +29,7 @@ struct EpisodesView: View {
                     ProgressView().tint(Theme.accent)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let err = loadError {
-                    ContentUnavailableView("Load Failed", systemImage: "exclamationmark.triangle",
+                    ContentUnavailableView("Can't show episodes", systemImage: "exclamationmark.triangle",
                                           description: Text(err))
                 } else {
                     episodeList
@@ -91,35 +93,103 @@ struct EpisodesView: View {
     // MARK: - Load
 
     private func loadSeason() async {
-        guard let showID = show.tmdbShowID, let client = app.tmdbClient else { return }
+        let season = selectedSeason
+        let tmdb = app.tmdbClient
+        let tvdb = app.tvdbClient
+        guard tmdb != nil || tvdb != nil else {
+            loadError = "Add a TMDB or TheTVDB key in Profile › Online services to see episodes."
+            return
+        }
         isLoading = true
         loadError = nil
-        defer { isLoading = false }
+        defer { if !Task.isCancelled { isLoading = false } }
+
+        var result: [EpisodeInfo] = []
+        var failure: String?
+        if let tmdb, let showID = show.tmdbShowID {
+            do {
+                let detail = try await tmdb.seasonDetail(showID: showID, season: season)
+                result = (detail.episodes ?? []).map(EpisodeInfo.init(tmdb:))
+            } catch {
+                failure = error.localizedDescription
+            }
+        }
+
+        // TheTVDB steps in when TMDB has nothing, and fills gaps (titles, summaries, pictures).
+        let needsHelp = result.isEmpty || result.contains {
+            Self.isGenericTitle($0.name) || ($0.overview ?? "").isEmpty || $0.imageURL == nil
+        }
+        if needsHelp, let tvdb, let extra = await tvdbEpisodes(tvdb, season: season) {
+            result = Self.merged(result, with: extra)
+        }
+
+        guard !Task.isCancelled else { return }
+        episodes = result
+        if result.isEmpty {
+            loadError = failure ?? "No episodes were found for season \(season)."
+        }
+    }
+
+    private func tvdbEpisodes(_ client: TVDBClient, season: Int) async -> [TVDBEpisode]? {
+        guard let imdb = show.imdbID, !imdb.isEmpty else { return nil }
         do {
-            let season = try await client.seasonDetail(showID: showID, season: selectedSeason)
-            episodes = season.episodes ?? []
+            let seriesID: Int
+            if let known = tvdbSeriesID {
+                seriesID = known
+            } else if let found = try await client.seriesID(imdbID: imdb) {
+                seriesID = found
+                tvdbSeriesID = found
+            } else {
+                return nil
+            }
+            return try await client.episodes(seriesID: seriesID, season: season)
         } catch {
-            loadError = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// "Episode 4" or an empty name means the source had no real title.
+    static func isGenericTitle(_ name: String) -> Bool {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty
+            || trimmed.range(of: #"^Episode\s+\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// TMDB's list stays the base. TheTVDB only fills what's missing, and supplies the whole list when TMDB has none.
+    static func merged(_ base: [EpisodeInfo], with extra: [TVDBEpisode]) -> [EpisodeInfo] {
+        guard !extra.isEmpty else { return base }
+        if base.isEmpty { return extra.map(EpisodeInfo.init(tvdb:)) }
+        let byNumber = Dictionary(extra.map { ($0.number, $0) }, uniquingKeysWith: { first, _ in first })
+        return base.map { episode in
+            guard let other = byNumber[episode.number] else { return episode }
+            var episode = episode
+            if isGenericTitle(episode.name), !isGenericTitle(other.name) { episode.name = other.name }
+            if (episode.overview ?? "").isEmpty, let overview = other.overview, !overview.isEmpty {
+                episode.overview = overview
+            }
+            if episode.imageURL == nil { episode.imageURL = other.imageURL }
+            if episode.runtimeMinutes == nil { episode.runtimeMinutes = other.runtimeMinutes }
+            return episode
         }
     }
 
     // MARK: - Stream
 
-    private func streamEpisode(_ ep: TMDBEpisode) {
+    private func streamEpisode(_ ep: EpisodeInfo) {
         guard let seriesID = show.imdbID else { return }
         let request = ContentRequest.episode(
             seriesID: seriesID,
             title: show.title,
-            season: ep.season_number,
-            episode: ep.episode_number,
+            season: ep.season,
+            episode: ep.number,
             year: show.year
         )
-        let episodeID = app.registerEpisode(show: show, season: ep.season_number,
-                                            episode: ep.episode_number, runtimeMinutes: ep.runtime)
+        let episodeID = app.registerEpisode(show: show, season: ep.season,
+                                            episode: ep.number, runtimeMinutes: ep.runtimeMinutes)
         streamingEpisode = EpisodeTarget(
             request: request,
             episodeID: episodeID,
-            title: "\(show.title) S\(String(format: "%02d", ep.season_number))E\(String(format: "%02d", ep.episode_number))"
+            title: "\(show.title) S\(String(format: "%02d", ep.season))E\(String(format: "%02d", ep.number))"
         )
     }
 }
@@ -128,13 +198,13 @@ struct EpisodesView: View {
 
 private struct EpisodeRow: View {
     @Environment(AppState.self) private var app
-    let episode: TMDBEpisode
+    let episode: EpisodeInfo
     let show: MediaItem
     let onStream: () -> Void
 
     private var record: WatchRecord? {
-        let key = AppState.episodeItem(show: show, season: episode.season_number,
-                                       episode: episode.episode_number, runtimeMinutes: episode.runtime).historyKey
+        let key = AppState.episodeItem(show: show, season: episode.season,
+                                       episode: episode.number, runtimeMinutes: episode.runtimeMinutes).historyKey
         // Episodes played this session are tracked live; earlier ones come from saved history.
         if let live = app.episodes.first(where: { $0.historyKey == key }) {
             return WatchRecord(key: key, progressSeconds: live.progressSeconds, isWatched: live.isWatched,
@@ -144,7 +214,7 @@ private struct EpisodeRow: View {
     }
 
     private var progressFraction: Double {
-        guard let record, let runtime = episode.runtime, runtime > 0 else { return 0 }
+        guard let record, let runtime = episode.runtimeMinutes, runtime > 0 else { return 0 }
         return min(record.progressSeconds / Double(runtime * 60), 1)
     }
 
@@ -174,7 +244,7 @@ private struct EpisodeRow: View {
 
                 VStack(alignment: .leading, spacing: Metrics.s(4)) {
                     HStack {
-                        Text("E\(episode.episode_number)")
+                        Text("E\(episode.number)")
                             .font(.casa(11, weight: .semibold))
                             .foregroundStyle(Theme.accent)
                         Text(episode.name)
@@ -182,7 +252,7 @@ private struct EpisodeRow: View {
                             .foregroundStyle(Theme.textPrimary)
                             .lineLimit(1)
                         Spacer(minLength: 0)
-                        if let rt = episode.runtime {
+                        if let rt = episode.runtimeMinutes {
                             Text(TimeFormat.runtime(TimeInterval(rt * 60)))
                                 .font(.casa(11))
                                 .foregroundStyle(Theme.textSecondary)
@@ -204,7 +274,7 @@ private struct EpisodeRow: View {
 
     @ViewBuilder
     private var episodeThumb: some View {
-        if let path = episode.still_path, let url = TMDBClient.backdropURL(path) {
+        if let url = episode.imageURL {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img): img.resizable().aspectRatio(contentMode: .fill)
@@ -227,6 +297,35 @@ private struct EpisodeRow: View {
 }
 
 // MARK: - Helpers
+
+/// One episode row, whichever service it came from.
+struct EpisodeInfo: Identifiable {
+    var id: String { "S\(season)E\(number)" }
+    var season: Int
+    var number: Int
+    var name: String
+    var overview: String?
+    var runtimeMinutes: Int?
+    var imageURL: URL?
+
+    init(tmdb episode: TMDBEpisode) {
+        season = episode.season_number
+        number = episode.episode_number
+        name = episode.name
+        overview = episode.overview
+        runtimeMinutes = episode.runtime
+        imageURL = episode.still_path.flatMap { TMDBClient.backdropURL($0) }
+    }
+
+    init(tvdb episode: TVDBEpisode) {
+        season = episode.season
+        number = episode.number
+        name = episode.name
+        overview = episode.overview
+        runtimeMinutes = episode.runtimeMinutes
+        imageURL = episode.imageURL
+    }
+}
 
 private struct EpisodeTarget: Identifiable {
     let id = UUID()

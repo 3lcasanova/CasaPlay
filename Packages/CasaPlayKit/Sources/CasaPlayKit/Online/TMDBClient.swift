@@ -24,8 +24,22 @@ public struct TMDBClient {
     private let transport: HTTPTransport
 
     public init(apiKey: String, transport: HTTPTransport = URLSessionTransport()) {
-        self.apiKey = apiKey
+        self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         self.transport = transport
+    }
+
+
+    // MARK: - Key check
+
+    /// TMDB hands out two credentials. The long "read access token" goes in a Bearer header.
+    /// The short 32-character "API key" goes in the URL as `api_key`. Either one works here.
+    static func usesBearer(_ key: String) -> Bool {
+        !(key.count == 32 && key.allSatisfy(\.isHexDigit))
+    }
+
+    /// Asks TMDB for its configuration, which only succeeds with a valid key.
+    public func verify() async throws {
+        _ = try await get(path: "/configuration", params: [:], as: TMDBConfiguration.self)
     }
 
     // MARK: - Search
@@ -46,28 +60,119 @@ public struct TMDBClient {
 
     // MARK: - Discover
 
-    public func trendingMovies() async throws -> [TMDBMovie] {
-        try await get(path: "/trending/movie/week", params: [:], as: TMDBMoviePage.self).results
+    public func trendingMovies(page: Int = 1) async throws -> [TMDBMovie] {
+        try await get(path: "/trending/movie/week", params: Self.pageParams(page), as: TMDBMoviePage.self).results
     }
 
-    public func trendingTV() async throws -> [TMDBShow] {
-        try await get(path: "/trending/tv/week", params: [:], as: TMDBShowPage.self).results
+    public func trendingTV(page: Int = 1) async throws -> [TMDBShow] {
+        try await get(path: "/trending/tv/week", params: Self.pageParams(page), as: TMDBShowPage.self).results
     }
 
     public func popularMovies(page: Int = 1) async throws -> [TMDBMovie] {
-        try await get(path: "/movie/popular", params: ["page": "\(page)"], as: TMDBMoviePage.self).results
+        try await get(path: "/movie/popular", params: Self.pageParams(page), as: TMDBMoviePage.self).results
     }
 
-    public func topRatedMovies() async throws -> [TMDBMovie] {
-        try await get(path: "/movie/top_rated", params: [:], as: TMDBMoviePage.self).results
+    public func topRatedMovies(page: Int = 1) async throws -> [TMDBMovie] {
+        try await get(path: "/movie/top_rated", params: Self.pageParams(page), as: TMDBMoviePage.self).results
     }
 
     public func popularTV(page: Int = 1) async throws -> [TMDBShow] {
-        try await get(path: "/tv/popular", params: ["page": "\(page)"], as: TMDBShowPage.self).results
+        try await get(path: "/tv/popular", params: Self.pageParams(page), as: TMDBShowPage.self).results
     }
 
-    public func topRatedTV() async throws -> [TMDBShow] {
-        try await get(path: "/tv/top_rated", params: [:], as: TMDBShowPage.self).results
+    public func topRatedTV(page: Int = 1) async throws -> [TMDBShow] {
+        try await get(path: "/tv/top_rated", params: Self.pageParams(page), as: TMDBShowPage.self).results
+    }
+
+    /// In cinemas now. `region` is a country code such as "CA" and picks that country's release dates.
+    public func nowPlayingMovies(region: String? = nil, page: Int = 1) async throws -> [TMDBMovie] {
+        try await get(path: "/movie/now_playing",
+                      params: Self.regionParams(region).merging(Self.pageParams(page)) { first, _ in first },
+                      as: TMDBMoviePage.self).results
+    }
+
+    /// Films that open soon.
+    public func upcomingMovies(region: String? = nil, page: Int = 1) async throws -> [TMDBMovie] {
+        try await get(path: "/movie/upcoming",
+                      params: Self.regionParams(region).merging(Self.pageParams(page)) { first, _ in first },
+                      as: TMDBMoviePage.self).results
+    }
+
+    /// Shows with an episode today.
+    public func airingTodayTV(page: Int = 1) async throws -> [TMDBShow] {
+        try await get(path: "/tv/airing_today", params: Self.pageParams(page), as: TMDBShowPage.self).results
+    }
+
+    /// Shows with an episode in the next week.
+    public func onTheAirTV(page: Int = 1) async throws -> [TMDBShow] {
+        try await get(path: "/tv/on_the_air", params: Self.pageParams(page), as: TMDBShowPage.self).results
+    }
+
+    /// Films by genre, original language and first release year. Titles with very few votes are left out.
+    /// Genre IDs: 28 action, 35 comedy, 16 animation, 27 horror, 878 sci-fi. Language "ja" gives Japanese films.
+    ///
+    /// `provider` is a TMDB watch-provider ID (Netflix is 8) and `watchRegion` the country whose catalogue it is,
+    /// which together keep only titles that stream there on a subscription.
+    public func discoverMovies(
+        genre: Int? = nil, language: String? = nil, fromYear: Int? = nil,
+        sort: TMDBDiscoverSort = .popularity, page: Int = 1,
+        provider: Int? = nil, watchRegion: String? = nil
+    ) async throws -> [TMDBMovie] {
+        try await get(path: "/discover/movie",
+                      params: Self.discoverParams(genre: genre, language: language, fromYear: fromYear,
+                                                  sort: sort, page: page, minVotes: 100,
+                                                  dateKey: "primary_release_date.gte",
+                                                  provider: provider, watchRegion: watchRegion),
+                      as: TMDBMoviePage.self).results
+    }
+
+    /// Shows by genre, original language and first air year.
+    /// Genre IDs: 10759 action and adventure, 16 animation, 35 comedy, 80 crime, 18 drama, 10765 sci-fi and fantasy.
+    public func discoverTV(
+        genre: Int? = nil, language: String? = nil, fromYear: Int? = nil,
+        sort: TMDBDiscoverSort = .popularity, page: Int = 1,
+        provider: Int? = nil, watchRegion: String? = nil
+    ) async throws -> [TMDBShow] {
+        try await get(path: "/discover/tv",
+                      params: Self.discoverParams(genre: genre, language: language, fromYear: fromYear,
+                                                  sort: sort, page: page, minVotes: 50,
+                                                  dateKey: "first_air_date.gte",
+                                                  provider: provider, watchRegion: watchRegion),
+                      as: TMDBShowPage.self).results
+    }
+
+    static func regionParams(_ region: String?) -> [String: String] {
+        guard let region = region?.trimmingCharacters(in: .whitespaces), region.count == 2 else { return [:] }
+        return ["region": region.uppercased()]
+    }
+
+    static func pageParams(_ page: Int) -> [String: String] {
+        ["page": "\(max(page, 1))"]
+    }
+
+    static func discoverParams(
+        genre: Int?, language: String?, fromYear: Int?, sort: TMDBDiscoverSort,
+        page: Int, minVotes: Int, dateKey: String,
+        provider: Int? = nil, watchRegion: String? = nil
+    ) -> [String: String] {
+        var params: [String: String] = [
+            "sort_by": sort.queryValue,
+            "include_adult": "false",
+            // The best rated list needs many more votes, or obscure titles with a few 10s fill it.
+            "vote_count.gte": "\(sort == .rating ? minVotes * 5 : minVotes)",
+            "page": "\(max(page, 1))"
+        ]
+        if let genre { params["with_genres"] = "\(genre)" }
+        if let language, !language.isEmpty { params["with_original_language"] = language }
+        if let fromYear { params[dateKey] = "\(fromYear)-01-01" }
+        if let provider {
+            params["with_watch_providers"] = "\(provider)"
+            // Subscription catalogue only, so "Trending on Netflix" doesn't list titles that are merely for rent.
+            params["with_watch_monetization_types"] = "flatrate"
+            let region = watchRegion?.trimmingCharacters(in: .whitespaces) ?? ""
+            params["watch_region"] = region.count == 2 ? region.uppercased() : "US"
+        }
+        return params
     }
 
     // MARK: - Detail
@@ -84,6 +189,21 @@ public struct TMDBClient {
                       as: TMDBShowDetail.self)
     }
 
+    /// Titles viewers of this film also watch, for the "Related" shelf.
+    public func recommendedMovies(id: Int, page: Int = 1) async throws -> [TMDBMovie] {
+        try await get(path: "/movie/\(id)/recommendations", params: Self.pageParams(page), as: TMDBMoviePage.self).results
+    }
+
+    /// Shows viewers of this show also watch, for the "Related" shelf.
+    public func recommendedTV(id: Int, page: Int = 1) async throws -> [TMDBShow] {
+        try await get(path: "/tv/\(id)/recommendations", params: Self.pageParams(page), as: TMDBShowPage.self).results
+    }
+
+    /// The latest and next episode of a show, for the "S01 E04" badge and the release ribbon on its poster.
+    public func showAirInfo(id: Int) async throws -> TMDBShowAirInfo {
+        try await get(path: "/tv/\(id)", params: [:], as: TMDBShowAirInfo.self)
+    }
+
     public func seasonDetail(showID: Int, season: Int) async throws -> TMDBSeason {
         try await get(path: "/tv/\(showID)/season/\(season)",
                       params: [:],
@@ -95,6 +215,17 @@ public struct TMDBClient {
     /// Full URL for a poster path (e.g. "/abc123.jpg"). Width: 500px.
     public static func posterURL(_ path: String) -> URL? {
         URL(string: "\(imageBase)/w500\(path)")
+    }
+
+    /// Poster URL at a chosen width: TMDB offers 92, 154, 185, 342, 500 and 780 pixels. A big picture
+    /// across a phone screen uses 780.
+    public static func posterURL(_ path: String, width: Int) -> URL? {
+        URL(string: "\(imageBase)/w\(width)\(path)")
+    }
+
+    /// The backdrop at its full size, usually 1920 pixels wide or more. For the big billboard on Apple TV.
+    public static func originalBackdropURL(_ path: String) -> URL? {
+        URL(string: "\(imageBase)/original\(path)")
     }
 
     /// Full URL for a backdrop path. Width: 1280px.
@@ -125,6 +256,7 @@ public struct TMDBClient {
         )
         item.posterPath = detail.poster_path
         item.backdropPath = detail.backdrop_path
+        item.tmdbMovieID = detail.id
         return item
     }
 
@@ -157,10 +289,13 @@ public struct TMDBClient {
     private func get<T: Decodable>(path: String, params: [String: String], as _: T.Type) async throws -> T {
         var comps = URLComponents(url: Self.base.appendingPathComponent(path),
                                   resolvingAgainstBaseURL: false)!
-        comps.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
+        var items = params.map { URLQueryItem(name: $0.key, value: $0.value) }
+        let bearer = Self.usesBearer(apiKey)
+        if !bearer { items.append(URLQueryItem(name: "api_key", value: apiKey)) }
+        comps.queryItems = items
         guard let url = comps.url else { throw TMDBError.badURL }
         var req = URLRequest(url: url, timeoutInterval: 15)
-        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if bearer { req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         let response = try await transport.send(req)
         guard (200..<300).contains(response.status) else {
@@ -181,13 +316,25 @@ public enum TMDBError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .badURL: return "Invalid TMDB request URL."
-        case .unauthorized: return "Invalid TMDB API key. Check Settings → Online Services."
+        case .unauthorized: return "TMDB refused the key. Check it in Profile › Online services."
         case .httpError(let code): return "TMDB returned HTTP \(code)."
         }
     }
 }
 
 // MARK: - JSON models
+
+/// Only used to check that a key works.
+/// How a discover list is ordered.
+public enum TMDBDiscoverSort: Sendable {
+    case popularity, rating
+
+    var queryValue: String { self == .rating ? "vote_average.desc" : "popularity.desc" }
+}
+
+public struct TMDBConfiguration: Decodable, Sendable {
+    public let change_keys: [String]?
+}
 
 public struct TMDBMovie: Decodable, Identifiable, Sendable {
     public let id: Int

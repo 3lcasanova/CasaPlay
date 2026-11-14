@@ -43,14 +43,44 @@ public struct StremioManifest: Codable, Equatable, Sendable {
         public struct Extra: Codable, Equatable, Sendable {
             public var name: String
             public var isRequired: Bool?
+            /// Values the add-on accepts, for example the genres of a "genre" extra.
+            public var options: [String]?
+
+            public init(name: String, isRequired: Bool? = nil, options: [String]? = nil) {
+                self.name = name
+                self.isRequired = isRequired
+                self.options = options
+            }
+
+            enum CodingKeys: String, CodingKey { case name, isRequired, options }
+
+            public init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                name = try c.decode(String.self, forKey: .name)
+                isRequired = (try? c.decodeIfPresent(Bool.self, forKey: .isRequired)) ?? nil
+                options = (try? c.decodeIfPresent([String].self, forKey: .options)) ?? nil
+            }
         }
         public var id: String
         public var type: String
         public var name: String?
         public var extra: [Extra]?
+        /// Older manifests list the extras as plain names instead of `extra` objects.
+        public var extraSupported: [String]?
+        public var extraRequired: [String]?
 
-        public var requiresExtra: Bool { extra?.contains { $0.isRequired == true } ?? false }
-        public var supportsSearch: Bool { extra?.contains { $0.name == "search" } ?? false }
+        public var requiresExtra: Bool {
+            (extra?.contains { $0.isRequired == true } ?? false) || !(extraRequired ?? []).isEmpty
+        }
+        public var supportsSearch: Bool { supports("search") }
+        public var supportsSkip: Bool { supports("skip") }
+        public var supportsGenre: Bool { supports("genre") }
+
+        func supports(_ extraName: String) -> Bool {
+            (extra?.contains { $0.name == extraName } ?? false)
+                || (extraSupported?.contains(extraName) ?? false)
+                || (extraRequired?.contains(extraName) ?? false)
+        }
     }
 
     public struct BehaviorHints: Codable, Equatable, Sendable {
@@ -156,6 +186,9 @@ public struct StremioMetaPreview: Codable, Equatable, Sendable, Identifiable, Ha
     public var type: String
     public var name: String
     public var poster: String?
+    /// Channel logos often come as `logo` instead of `poster`.
+    public var logo: String?
+    public var background: String?
     public var releaseInfo: String?
     public var description: String?
     public var imdbRating: String?
@@ -250,9 +283,10 @@ public struct StremioClient: Sendable {
         return try decode(R.self, try await get(path("meta", type, id), timeout: timeout)).meta
     }
 
-    public func catalog(type: String, id: String, search: String? = nil, skip: Int = 0, timeout: TimeInterval = 15) async throws -> [StremioMetaPreview] {
+    public func catalog(type: String, id: String, search: String? = nil, genre: String? = nil, skip: Int = 0, timeout: TimeInterval = 15) async throws -> [StremioMetaPreview] {
         struct R: Decodable { let metas: [StremioMetaPreview] }
         var extras: [String] = []
+        if let genre, !genre.isEmpty { extras.append("genre=\(Self.encode(genre))") }
         if let search, !search.isEmpty { extras.append("search=\(Self.encode(search))") }
         if skip > 0 { extras.append("skip=\(skip)") }
         var url = path("catalog", type, id)

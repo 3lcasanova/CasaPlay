@@ -9,7 +9,7 @@ Designed by 𝐂𝓪sΔηⓞשα.
 This is Phase 0 and the start of Phase 1 from the design canvas.
 
 **Real and working in code**
-- The shared SwiftUI app for tvOS, iOS and iPadOS: Home, Movies, Favorites, Sources, Profile, Title detail, Settings.
+- The shared SwiftUI app for tvOS, iOS and iPadOS: Home, Movies, Series, IPTV (live channels from your Stremio add-ons), Extensions, Servers, Profile, Title detail, Settings.
 - A native player built on `AVPlayerViewController`, with resume and 5-second progress saving.
 - `CasaPlayKit`, a Swift package with the logic that does not depend on the UI:
   - filename parser (`Movie.Name.2025.2160p.mkv`)
@@ -70,7 +70,7 @@ You need a Mac with Xcode 15 or newer.
 2. In this folder run: `xcodegen generate`
 3. Open `CasaPlay.xcodeproj`.
 4. Pick the **CasaPlay-tvOS** or **CasaPlay-iOS** scheme and a simulator.
-5. For a real device, set your Team under Signing & Capabilities. The bundle ID `com.casanova.casaplay` is a placeholder; change `bundleIdPrefix` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` if you want another.
+5. For a real device, set your Team under Signing & Capabilities. The bundle ID `com.casanova.CasaPlay` is a placeholder; change `bundleIdPrefix` and `PRODUCT_BUNDLE_IDENTIFIER` in `project.yml` if you want another.
 
 ### API keys
 

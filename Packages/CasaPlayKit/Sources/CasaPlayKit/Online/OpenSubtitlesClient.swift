@@ -74,11 +74,23 @@ public struct OpenSubtitlesClient: Sendable {
         self.transport = transport
     }
 
+    // MARK: Key check
+
+    /// Asks for the list of subtitle formats, which only needs a valid API key (no sign-in).
+    public func verify() async throws {
+        var client = self
+        client.token = nil
+        let response = try await transport.send(try client.authorized(URLRequest(url: baseURL.appendingPathComponent("infos/formats"))))
+        try check(response)
+    }
+
     // MARK: Search
 
     public enum Query: Equatable, Sendable {
         case imdb(String)
         case title(String, year: Int?)
+        /// One episode of a show, by the show's IMDb ID.
+        case episode(parentIMDb: String, season: Int, episode: Int)
     }
 
     /// Finds subtitles and returns them best first: preferred language order,
@@ -101,6 +113,11 @@ public struct OpenSubtitlesClient: Sendable {
         case .title(let title, let year):
             items.append(URLQueryItem(name: "query", value: title.lowercased()))
             if let year { items.append(URLQueryItem(name: "year", value: String(year))) }
+        case .episode(let parent, let season, let episode):
+            let digits = parent.lowercased().replacingOccurrences(of: "tt", with: "")
+            items.append(URLQueryItem(name: "parent_imdb_id", value: String(Int(digits) ?? 0)))
+            items.append(URLQueryItem(name: "season_number", value: String(season)))
+            items.append(URLQueryItem(name: "episode_number", value: String(episode)))
         }
         let codes = languages.map { $0.lowercased() }.filter { !$0.isEmpty }
         if !codes.isEmpty {

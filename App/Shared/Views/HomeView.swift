@@ -5,11 +5,11 @@ import CasaPlayKit
 
 struct HomeView: View {
     @Environment(AppState.self) private var app
-    @State private var path: [UUID] = []
-    @State private var isOpening = false
-    @State private var openError: String?
+    @State var path: [UUID] = []
+    @State var isOpening = false
+    @State var openError: String?
 
-    private var opener: DiscoverOpener {
+    var opener: DiscoverOpener {
         DiscoverOpener(app: app,
                        push: { path.append($0) },
                        setBusy: { isOpening = $0 },
@@ -17,75 +17,144 @@ struct HomeView: View {
     }
 
     var body: some View {
+        #if os(tvOS)
+        tvBody
+        #else
+        phoneBody
+        #endif
+    }
+
+    // MARK: Apple TV
+
+    @ViewBuilder
+    private var tvBody: some View {
+        #if os(tvOS)
         let feed = app.discover
 
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
-                    if let item = app.continueWatching.first {
-                        HeroView(item: item)
-                    } else if let top = feed.trendingMovies.first {
-                        DiscoverHero(title: top) { opener.open(top) }
-                    }
+            TVHome(path: $path, opener: opener, isOpening: isOpening, message: openError ?? feed.error)
+                .task(id: app.tmdbClient == nil) {
+                    await feed.loadIfNeeded(app.tmdbClient)
+                }
+                .navigationDestination(for: UUID.self) { id in
+                    DetailView(itemID: id)
+                }
+        }
+        #else
+        EmptyView()
+        #endif
+    }
+}
 
-                    if app.tmdbClient == nil {
-                        TMDBKeyNotice()
-                    }
+#if !os(tvOS)
 
-                    if let message = openError ?? feed.error {
-                        Text(message)
-                            .font(.casa(13))
-                            .foregroundStyle(.red)
-                            .padding(.horizontal, Metrics.screenPadding)
-                    }
+// MARK: - iPhone and iPad
 
-                    if !app.continueWatching.isEmpty {
-                        Shelf(title: "Continue Watching") {
-                            ForEach(app.continueWatching) { item in
-                                NavigationLink(value: item.id) {
-                                    LandscapeCard(item: item)
+extension HomeView {
+    /// Up to two titles you are watching, then trending films and shows, alternating.
+    private var heroSlides: [HeroSlide] {
+        let feed = app.discover
+        var slides = app.continueWatching.prefix(2).map { HeroSlide(source: .library($0)) }
+
+        var online: [DiscoverTitle] = []
+        let films = feed.trendingMovies.filter { $0.backdropPath != nil }
+        let shows = feed.trendingTV.filter { $0.backdropPath != nil }
+        for position in 0..<max(films.count, shows.count) {
+            if position < films.count { online.append(films[position]) }
+            if position < shows.count { online.append(shows[position]) }
+        }
+        slides += online.prefix(max(6 - slides.count, 0)).map { HeroSlide(source: .online($0)) }
+        return slides
+    }
+
+    @ViewBuilder
+    var phoneBody: some View {
+        let feed = app.discover
+
+        NavigationStack(path: $path) {
+            GeometryReader { proxy in
+                let topInset = max(proxy.safeAreaInsets.top, 20)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 28) {
+                        let slides = heroSlides
+                        if slides.isEmpty {
+                            HomeHeader(topInset: topInset)
+                        } else {
+                            HomeHero(slides: slides, topInset: topInset) { opener.open($0) }
+                        }
+
+                        if app.tmdbClient == nil {
+                            TMDBKeyNotice()
+                        }
+
+                        if let message = openError ?? feed.error {
+                            Text(message)
+                                .font(.casa(13))
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, Metrics.screenPadding)
+                        }
+
+                        if !app.continueWatching.isEmpty {
+                            Shelf(title: "Continue Watching") {
+                                ForEach(app.continueWatching) { item in
+                                    NavigationLink(value: item.id) {
+                                        ContinueCard(item: item)
+                                    }
+                                    .posterButtonStyle()
                                 }
-                                .posterButtonStyle()
+                            }
+                        }
+
+                        DiscoverShelf(title: "Top 10 Movies This Week",
+                                      titles: Array(feed.trendingMovies.prefix(10)),
+                                      ranked: true, destination: .movies) { opener.open($0) }
+                        DiscoverShelf(title: "Top 10 TV Shows This Week",
+                                      titles: Array(feed.trendingTV.prefix(10)),
+                                      ranked: true, destination: .series) { opener.open($0) }
+
+                        if !app.favorites.isEmpty {
+                            Shelf(title: "Favorites") {
+                                ForEach(app.favorites) { item in
+                                    NavigationLink(value: item.id) {
+                                        libraryPoster(item)
+                                    }
+                                    .posterButtonStyle()
+                                }
+                            }
+                        }
+
+                        DiscoverShelf(title: "Popular Movies", titles: feed.popularMovies, destination: .movies) { opener.open($0) }
+                        DiscoverShelf(title: "Now Playing", titles: feed.titles("m-nowPlaying"), destination: .movies) { opener.open($0) }
+                        DiscoverShelf(title: "Popular Shows", titles: feed.popularTV, destination: .series) { opener.open($0) }
+                        DiscoverShelf(title: "Top Rated", titles: feed.topRated, destination: .movies) { opener.open($0) }
+                        DiscoverShelf(title: "Top Rated Shows", titles: feed.topRatedTV, destination: .series) { opener.open($0) }
+                        DiscoverShelf(title: "Anime Series", titles: feed.titles("tv-anime"), destination: .series) { opener.open($0) }
+                        DiscoverShelf(title: "Anime Movies", titles: feed.titles("m-anime"), destination: .movies) { opener.open($0) }
+                        DiscoverShelf(title: "Coming Soon", titles: feed.titles("m-upcoming"), destination: .movies) { opener.open($0) }
+
+                        if !app.recentlyAdded.isEmpty {
+                            Shelf(title: "Your Library") {
+                                ForEach(app.recentlyAdded) { item in
+                                    NavigationLink(value: item.id) {
+                                        libraryPoster(item)
+                                    }
+                                    .posterButtonStyle()
+                                }
                             }
                         }
                     }
-
-                    DiscoverShelf(title: "Trending Movies", titles: feed.trendingMovies) { opener.open($0) }
-                    DiscoverShelf(title: "Trending TV Shows", titles: feed.trendingTV) { opener.open($0) }
-
-                    if !app.favorites.isEmpty {
-                        Shelf(title: "Favorites") {
-                            ForEach(app.favorites) { item in
-                                NavigationLink(value: item.id) {
-                                    PosterCard(item: item)
-                                }
-                                .posterButtonStyle()
-                            }
-                        }
-                    }
-
-                    DiscoverShelf(title: "Popular Movies", titles: feed.popularMovies) { opener.open($0) }
-                    DiscoverShelf(title: "Top Rated", titles: feed.topRated) { opener.open($0) }
-
-                    if !app.recentlyAdded.isEmpty {
-                        Shelf(title: "Your Library") {
-                            ForEach(app.recentlyAdded) { item in
-                                NavigationLink(value: item.id) {
-                                    PosterCard(item: item)
-                                }
-                                .posterButtonStyle()
-                            }
-                        }
+                    .padding(.bottom, 24)
+                }
+                .ignoresSafeArea(edges: .top)
+                .screenBackground()
+                .overlay {
+                    if isOpening {
+                        ProgressView().tint(.white)
                     }
                 }
-                .padding(.bottom, Metrics.sectionSpacing)
             }
-            .screenBackground()
-            .overlay {
-                if isOpening {
-                    ProgressView().tint(Theme.accent)
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: app.tmdbClient == nil) {
                 await feed.loadIfNeeded(app.tmdbClient)
             }
@@ -94,7 +163,16 @@ struct HomeView: View {
             }
         }
     }
+
+    private func libraryPoster(_ item: MediaItem) -> some View {
+        ApplePosterCard(title: item.title,
+                        posterPath: item.posterPath,
+                        progress: item.canResume ? item.progressFraction : nil,
+                        isWatched: item.isWatched)
+    }
 }
+
+#endif
 
 struct HeroView: View {
     @Environment(AppState.self) private var app
