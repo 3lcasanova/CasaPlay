@@ -7,7 +7,7 @@ TMDB_API_KEY =
 TVDB_API_KEY =
 OMDB_API_KEY =
 OPENSUBTITLES_API_KEY =
-// Your own add-on link (for example a TorBox MediaFusion link). Saved by Scripts/setup-addon.sh.
+// Your own add-on links (for example TorBox MediaFusion or Absolute Cinema). Saved by Scripts/setup-addon.sh.
 PERSONAL_ADDON_URL =
 
 #include? "Secrets.xcconfig"

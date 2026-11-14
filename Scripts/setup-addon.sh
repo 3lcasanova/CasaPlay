@@ -1,9 +1,10 @@
 #!/bin/bash
 # CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 #
-# Saves your own add-on link (for example a TorBox MediaFusion link) into Config/Secrets.xcconfig,
-# which git ignores. CasaPlay installs it by itself the first time it opens, on Apple TV, iPhone
-# and iPad, so nothing has to be typed on the Apple TV.
+# Saves your own add-on links (for example TorBox MediaFusion or Absolute Cinema) into
+# Config/Secrets.xcconfig, which git ignores. CasaPlay installs them by itself the first time it
+# opens, on Apple TV, iPhone and iPad, so nothing has to be typed on the Apple TV.
+# Run it once per link; each run keeps the links saved before.
 #
 # The link is tested first (it must answer with an add-on manifest) and is never printed.
 #
@@ -58,13 +59,28 @@ fi
 
 # xcconfig files treat // as a comment, so the https:// is left off here; the app puts it back.
 value="${link#https://}"
+case "$value" in
+  *//*|*'$('*) echo "✗ This link has // after the address or a \$( in it, which the build settings file can't hold."; exit 1 ;;
+esac
+
+# Several links can be saved, separated by spaces. A new link replaces the saved one for the same
+# website (so run it again to change a link) and leaves the others alone.
 umask 077
+old="$(sed -n 's/^PERSONAL_ADDON_URL[[:space:]]*=[[:space:]]*//p' "$FILE" 2>/dev/null | tail -n 1 | tr -d '\r')"
+merged="$(python3 - "$value" "$old" <<'PY'
+import sys
+new, old = sys.argv[1], sys.argv[2]
+host = lambda u: u.split("/", 1)[0].lower()
+keep = [u for u in old.split() if host(u) != host(new)]
+print(" ".join(keep + [new]))
+PY
+)"
 tmp="$(mktemp)"
 [ -f "$FILE" ] && grep -v '^PERSONAL_ADDON_URL[[:space:]]*=' "$FILE" > "$tmp"
-printf 'PERSONAL_ADDON_URL = %s\n' "$value" >> "$tmp"
+printf 'PERSONAL_ADDON_URL = %s\n' "$merged" >> "$tmp"
 cat "$tmp" > "$FILE"
 rm -f "$tmp"
 chmod 600 "$FILE"
 
-echo "✓ Saved. Rebuild and install the app: it installs this add-on the first time it opens."
+echo "✓ Saved ($(printf '%s' "$merged" | wc -w | tr -d ' ') add-on link(s) in total). Rebuild and install the app: it installs them the first time it opens."
 exit 0
