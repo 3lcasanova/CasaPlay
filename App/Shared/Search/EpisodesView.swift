@@ -48,7 +48,7 @@ struct EpisodesView: View {
             .safeAreaInset(edge: .top) { seasonPicker }
         }
         .adaptiveSheet(item: $streamingEpisode) { target in
-            StreamSourcesView(request: target.request, libraryItemID: target.episodeID)
+            StreamSourcesView(request: target.request, libraryItemID: target.episodeID, resumeLastStream: true)
         }
         .task(id: selectedSeason) { await loadSeason() }
     }

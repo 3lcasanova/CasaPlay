@@ -81,11 +81,12 @@ private struct DetailContent: View {
                 await loadEpisodes()
             }
             .adaptiveSheet(item: $streamingEpisode) { target in
-                StreamSourcesView(request: target.request, libraryItemID: target.episodeID)
+                StreamSourcesView(request: target.request, libraryItemID: target.episodeID, resumeLastStream: true)
             }
             .adaptiveSheet(isPresented: $showingStreams) {
                 if let request = movieRequest {
-                    StreamSourcesView(request: request, libraryItemID: item.id)
+                    // Resume plays the last stream by itself; "More Streams" on a title that already has one still lists.
+                    StreamSourcesView(request: request, libraryItemID: item.id, resumeLastStream: needsStream)
                 }
             }
             .adaptiveSheet(isPresented: $showingEpisodes) {

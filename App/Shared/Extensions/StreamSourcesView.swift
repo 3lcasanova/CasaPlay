@@ -8,6 +8,9 @@ import CasaPlayKit
 struct StreamSourcesView: View {
     let request: ContentRequest
     var libraryItemID: UUID? = nil
+    /// True when the viewer pressed Resume: the stream the title was last played from starts by itself, and the
+    /// list only shows if that stream can't be found.
+    var resumeLastStream = false
     @Environment(ExtensionCenter.self) private var center
     @Environment(AppState.self) private var app
     @Environment(TorrentCenter.self) private var torrents
@@ -24,6 +27,11 @@ struct StreamSourcesView: View {
     @State private var addTorrentError: String?
     /// The torrent whose file list is open, pushed inside this screen's own navigation.
     @State private var openedTorrent: InfoHash?
+    /// Looking for the last stream so Resume can play it without the list.
+    @State private var resuming = false
+    /// The last stream wasn't there this time; the list is shown instead.
+    @State private var resumeMissed = false
+    @State private var resumeChecked = false
 
     var body: some View {
         NavigationStack {
@@ -149,12 +157,17 @@ struct StreamSourcesView: View {
     /// The glass panel: source chips on top, then the streams.
     private var panel: some View {
         VStack(spacing: 0) {
-            chipsRow
-            // With "Where to watch" entries the scrolling list is used, so a long list of services fits.
-            if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty && results.infoNotes.isEmpty {
-                emptyView
+            if resuming {
+                resumingView
             } else {
-                streamList
+                if resumeMissed { resumeMissedNote }
+                chipsRow
+                // With "Where to watch" entries the scrolling list is used, so a long list of services fits.
+                if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty && results.infoNotes.isEmpty {
+                    emptyView
+                } else {
+                    streamList
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -165,6 +178,37 @@ struct StreamSourcesView: View {
                 .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: Platform.isTV ? 44 : 26, style: .continuous))
+    }
+
+    /// Shown while the last stream is looked up. Choosing another stream drops back to the list.
+    private var resumingView: some View {
+        VStack(spacing: Metrics.s(16)) {
+            ProgressView().tint(Theme.accent)
+            Text("Resuming where you left off")
+                .font(.casa(17, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+            Text("Finding the stream you were watching…")
+                .font(.casa(13))
+                .foregroundStyle(Theme.textSecondary)
+            Button {
+                resuming = false
+            } label: {
+                Text("Choose another stream")
+            }
+            .buttonStyle(StreamChipStyle(selected: false))
+            .padding(.top, Metrics.s(8))
+        }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(Metrics.s(24))
+    }
+
+    private var resumeMissedNote: some View {
+        Text("Your last stream wasn't available this time. Choose another.")
+            .font(.casa(12))
+            .foregroundStyle(Theme.textSecondary)
+            .padding(.horizontal, Platform.isTV ? 40 : 14)
+            .padding(.top, Platform.isTV ? 24 : 12)
     }
 
     /// Refresh, All, one chip per source, and the quality setting.
@@ -458,6 +502,14 @@ struct StreamSourcesView: View {
 
     private func runAggregator(mode: QualityMode) async {
         guard !Task.isCancelled else { return }
+        if !resumeChecked {
+            resumeChecked = true
+            if resumeLastStream, let id = libraryItemID, app.item(id: id)?.canResume == true,
+               app.savedStream(for: id) != nil {
+                resuming = true
+            }
+        }
+        let pick = resuming ? libraryItemID.flatMap { app.savedStream(for: $0) } : nil
         results = SourceResults()
         let providers = await buildProviders()
         guard !Task.isCancelled else { return }
@@ -467,6 +519,16 @@ struct StreamSourcesView: View {
         for await snapshot in agg.run(request, mode: mode) {
             guard !Task.isCancelled else { return }
             results = snapshot
+            // Resume: the moment the add-ons list the stream it was last played from, play it.
+            if resuming, let pick, let match = pick.bestMatch(in: snapshot.ranked + snapshot.hidden) {
+                resuming = false
+                play(match)
+                return
+            }
+        }
+        if resuming {
+            resuming = false
+            resumeMissed = true
         }
     }
 
@@ -514,10 +576,13 @@ struct StreamSourcesView: View {
                 container = .other
             }
             let file = MediaFileInfo(container: container, videoCodec: .hevc)
-            if let libraryItemID,
-               app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders, file: file) {
-                dismiss()
-                return
+            if let libraryItemID {
+                // Remembered so Resume can play this same stream later without the list.
+                app.rememberStream(candidate, for: libraryItemID)
+                if app.play(libraryItemID: libraryItemID, streamURL: url, headers: streamHeaders, file: file) {
+                    dismiss()
+                    return
+                }
             }
             let item = MediaItem(
                 id: UUID(),

@@ -162,6 +162,9 @@ final class AppState {
     @ObservationIgnored private var autoSubtitleTried: Set<MediaItem.ID> = []
     /// Streams started this session, by title. Used to hand a link to the NihonSub bridge. Never saved.
     var streamLinks: [MediaItem.ID: StreamLink] = [:]
+    /// The stream each title was last played from, by watch-history key, so Resume can start it by itself.
+    /// Only a fingerprint is saved, never the link.
+    var streamPicks: [String: StreamPick] = StreamPickStore.load()
     /// What each NihonSub job is doing. Kept here so a job goes on after the subtitle screen is closed.
     var nihonSubStatus: [MediaItem.ID: NihonSubStatus] = [:]
     @ObservationIgnored private var nihonSubTasks: [MediaItem.ID: Task<Void, Never>] = [:]
