@@ -16,6 +16,8 @@ struct StreamSourcesView: View {
 
     @State private var results = SourceResults()
     @State private var showQualityPicker = false
+    /// Bumped by the refresh button to search again.
+    @State private var refreshCount = 0
     /// The source chip that is on: only streams from that add-on are listed. Nil lists every source.
     @State private var sourceFilter: String?
     @State private var isAddingTorrent = false
@@ -25,71 +27,39 @@ struct StreamSourcesView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Quality mode selector
-                HStack(spacing: Metrics.s(10)) {
-                    Text("Quality:")
-                        .font(.casa(13))
-                        .foregroundStyle(Theme.textSecondary)
-                    Button {
-                        showQualityPicker = true
-                    } label: {
-                        HStack(spacing: 4) {
-                            Text(center.qualityMode.shortLabel)
-                                .font(.casa(13, weight: .semibold))
-                                .foregroundStyle(Theme.accent)
-                            Image(systemName: "chevron.down")
-                                .font(.casa(10, weight: .bold))
-                                .foregroundStyle(Theme.accent)
+            GeometryReader { geometry in
+                let wide = geometry.size.width >= 700
+                ZStack {
+                    backdrop
+                    if wide {
+                        // Apple TV and iPad: the title on the left, the streams on a glass panel on the right.
+                        HStack(spacing: 0) {
+                            heroColumn(compact: false)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            panel
+                                .frame(width: geometry.size.width * 0.57)
+                                .padding(.trailing, Platform.isTV ? 60 : 24)
+                                .padding(.vertical, Platform.isTV ? 70 : 20)
+                        }
+                    } else {
+                        VStack(spacing: 10) {
+                            heroColumn(compact: true)
+                            panel
+                                .padding(.horizontal, 12)
+                                .padding(.bottom, 8)
                         }
                     }
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
-
-                    // One chip per source with its status. Select a chip to list only that source's streams.
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: Metrics.s(6)) {
-                            Button {
-                                sourceFilter = nil
-                            } label: {
-                                SourceAllChip(isSelected: activeSource == nil)
-                            }
-                            .premiumCardStyle(focusScale: 1.08)
-
-                            ForEach(results.outcomes) { outcome in
-                                Button {
-                                    sourceFilter = activeSource == outcome.providerID ? nil : outcome.providerID
-                                } label: {
-                                    ProviderStatusChip(outcome: outcome, isSelected: activeSource == outcome.providerID)
-                                }
-                                .premiumCardStyle(focusScale: 1.08)
-                            }
-                        }
-                        .padding(.horizontal, Platform.isTV ? 8 : 0)
-                        .padding(.vertical, Platform.isTV ? 14 : 2)
-                    }
-                }
-                .padding(.horizontal, Metrics.screenPadding)
-                .padding(.vertical, Metrics.s(10))
-
-                Divider().background(Theme.surfaceStrong)
-
-                // Stream list
-                // With "Where to watch" entries the scrolling list is used, so a long list of services fits.
-                if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty && results.infoNotes.isEmpty {
-                    emptyView
-                } else {
-                    streamList
                 }
             }
-            .screenBackground()
+            .background(Color.black.ignoresSafeArea())
             .scrollingScreenTitle("Choose Stream")
             .navigationDestination(item: $openedTorrent) { hash in
                 TorrentDetailView(hash: hash, libraryItemID: libraryItemID)
             }
             #if !os(tvOS)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
@@ -106,7 +76,7 @@ struct StreamSourcesView: View {
         .alert("Couldn't add torrent", isPresented: .constant(addTorrentError != nil), actions: {
             Button("OK") { addTorrentError = nil }
         }, message: { Text(addTorrentError ?? "") })
-        .task(id: center.qualityMode) { [mode = center.qualityMode] in
+        .task(id: RunKey(mode: center.qualityMode, refresh: refreshCount)) { [mode = center.qualityMode] in
             await runAggregator(mode: mode)
         }
         // The player is presented from the app's root, which can't happen while this sheet is up.
@@ -124,6 +94,121 @@ struct StreamSourcesView: View {
                 .padding(Metrics.s(24))
                 .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
             }
+        }
+    }
+
+    // MARK: - Hero look
+
+    /// The film or show this is for, when the library knows it: its pictures, genres and logo.
+    private var art: MediaItem? {
+        if let libraryItemID, let own = app.item(id: libraryItemID), own.kind != .episode { return own }
+        let parent = libraryItemID.flatMap { app.item(id: $0) }?.parentIMDbID ?? request.id
+        return app.items.first { $0.imdbID == parent }
+    }
+
+    private var logoID: Int? { art?.tmdbShowID ?? art?.tmdbMovieID }
+
+    private var heroMeta: String {
+        var parts: [String] = []
+        if request.kind == .episode, let season = request.season, let episode = request.episode {
+            parts.append("Season \(season) · Episode \(episode)")
+        }
+        parts += (art?.genres ?? []).prefix(3)
+        if let year = art?.year ?? request.year { parts.append(String(year)) }
+        return parts.joined(separator: " • ")
+    }
+
+    /// The artwork, dimmed so the glass panel and the words stay readable.
+    private var backdrop: some View {
+        ZStack {
+            BackdropImage(path: art?.backdropPath ?? art?.posterPath, hue: art?.artHue ?? 30,
+                          fullSize: Platform.isTV, alignment: .top)
+            Color.black.opacity(0.66)
+            LinearGradient(colors: [Color.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+        }
+        .ignoresSafeArea()
+    }
+
+    private func heroColumn(compact: Bool) -> some View {
+        VStack(spacing: compact ? 6 : 22) {
+            TitleLogo(title: request.title, tmdbID: logoID, isShow: art?.tmdbShowID != nil,
+                      logoWidth: compact ? 220 : 460, logoHeight: compact ? 64 : 190,
+                      alignment: .center, plainSize: compact ? 30 : 64)
+            if !heroMeta.isEmpty {
+                Text(heroMeta)
+                    .font(.system(size: compact ? 13 : 28, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.horizontal, compact ? 16 : 50)
+        .padding(.top, compact ? 4 : 0)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The glass panel: source chips on top, then the streams.
+    private var panel: some View {
+        VStack(spacing: 0) {
+            chipsRow
+            // With "Where to watch" entries the scrolling list is used, so a long list of services fits.
+            if results.ranked.isEmpty && results.finished && results.whereToWatch.isEmpty && results.infoNotes.isEmpty {
+                emptyView
+            } else {
+                streamList
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.ultraThinMaterial,
+                    in: RoundedRectangle(cornerRadius: Platform.isTV ? 44 : 26, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Platform.isTV ? 44 : 26, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.14), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Platform.isTV ? 44 : 26, style: .continuous))
+    }
+
+    /// Refresh, All, one chip per source, and the quality setting.
+    private var chipsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: Metrics.s(10)) {
+                Button {
+                    refreshCount += 1
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(StreamChipStyle(selected: false, round: true))
+                .accessibilityLabel("Search again")
+
+                Button {
+                    sourceFilter = nil
+                } label: {
+                    Text("All")
+                }
+                .buttonStyle(StreamChipStyle(selected: activeSource == nil))
+
+                ForEach(results.outcomes) { outcome in
+                    Button {
+                        sourceFilter = activeSource == outcome.providerID ? nil : outcome.providerID
+                    } label: {
+                        ProviderChipLabel(outcome: outcome)
+                    }
+                    .buttonStyle(StreamChipStyle(selected: activeSource == outcome.providerID))
+                }
+
+                Button {
+                    showQualityPicker = true
+                } label: {
+                    HStack(spacing: Metrics.s(6)) {
+                        Text(center.qualityMode.shortLabel)
+                        Image(systemName: "chevron.down")
+                            .font(.casa(10, weight: .bold))
+                    }
+                }
+                .buttonStyle(StreamChipStyle(selected: false))
+                .accessibilityLabel("Stream quality")
+            }
+            .padding(.horizontal, Platform.isTV ? 40 : 14)
+            .padding(.vertical, Platform.isTV ? 28 : 12)
         }
     }
 
@@ -173,9 +258,18 @@ struct StreamSourcesView: View {
                         .padding(.vertical, Metrics.s(16))
                         .focusableOnTV()
                 }
-                ForEach(shownStreams) { candidate in
-                    StreamCandidateRow(candidate: candidate, isBest: results.bestChoice?.id == candidate.id) {
-                        play(candidate)
+                ForEach(entries) { entry in
+                    if let header = entry.header {
+                        Text(header)
+                            .font(.casa(12, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.92))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, Metrics.s(6))
+                            .padding(.leading, Metrics.s(8))
+                    } else if let candidate = entry.candidate {
+                        StreamCandidateRow(candidate: candidate, isBest: results.bestChoice?.id == candidate.id) {
+                            play(candidate)
+                        }
                     }
                 }
                 if !results.finished {
@@ -201,8 +295,41 @@ struct StreamSourcesView: View {
                     rejectedSection
                 }
             }
-            .padding(Metrics.screenPadding)
+            .padding(.horizontal, Platform.isTV ? 40 : 14)
+            .padding(.bottom, Platform.isTV ? 40 : 14)
         }
+    }
+
+    /// The streams in ranked order, with a small heading each time the group (4KHDHub, a service, an add-on)
+    /// changes.
+    private struct StreamEntry: Identifiable {
+        let id: String
+        let header: String?
+        let candidate: StreamCandidate?
+    }
+
+    private var entries: [StreamEntry] {
+        var out: [StreamEntry] = []
+        var last: String?
+        for candidate in shownStreams {
+            let group = Self.groupName(candidate)
+            if group != last {
+                out.append(StreamEntry(id: "group-\(out.count)-\(group)", header: group, candidate: nil))
+                last = group
+            }
+            out.append(StreamEntry(id: candidate.id, header: nil, candidate: candidate))
+        }
+        return out
+    }
+
+    /// "4KHDHub - FSL 2160p" belongs to "4KHDHub"; a label with no such start belongs to its add-on.
+    private static func groupName(_ candidate: StreamCandidate) -> String {
+        let firstLine = candidate.label.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init) ?? ""
+        if let range = firstLine.range(of: " - ") {
+            let prefix = firstLine[..<range.lowerBound].trimmingCharacters(in: .whitespaces)
+            if !prefix.isEmpty, prefix.count <= 24 { return prefix }
+        }
+        return candidate.providerName
     }
 
     // MARK: - Where to watch
@@ -429,32 +556,28 @@ private struct StreamCandidateRow: View {
 
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: Metrics.s(14)) {
-                // Quality badge column
-                VStack(spacing: 4) {
-                    resolutionBadge
-                    verifiedBadge
-                }
-                .frame(width: Metrics.s(60))
-
-                // Info
-                VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .center, spacing: Metrics.s(14)) {
+                VStack(alignment: .leading, spacing: Metrics.s(4)) {
                     Text(verbatim: candidate.label.isEmpty ? candidate.filename ?? "Stream" : candidate.label)
-                        .font(.casa(14, weight: .semibold))
-                        .foregroundStyle(Theme.textPrimary)
+                        .font(.casa(16, weight: .bold))
+                        .foregroundStyle(Color.white)
                         .lineLimit(Platform.isTV ? 3 : nil)
                         .fixedSize(horizontal: false, vertical: true)
                     if let filename = candidate.filename, !candidate.label.isEmpty,
                        !candidate.label.localizedCaseInsensitiveContains(filename) {
                         Text(verbatim: filename)
-                            .font(.casa(11))
-                            .foregroundStyle(Theme.textSecondary)
+                            .font(.casa(12, weight: .semibold))
+                            .foregroundStyle(Color.white.opacity(0.9))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     HStack(spacing: Metrics.s(6)) {
-                        Text(candidate.providerName)
-                            .font(.casa(11))
-                            .foregroundStyle(Theme.textSecondary)
+                        if let size = candidate.advertised.sizeBytes {
+                            Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                                .font(.casa(12, weight: .semibold))
+                                .foregroundStyle(Color.white.opacity(0.9))
+                        }
+                        resolutionBadge
+                        verifiedBadge
                         if let hdr = (candidate.advertised.dynamicRange ?? candidate.verification.verified?.dynamicRange)?.shortLabel {
                             Text(hdr).badgeStyle(.info)
                         }
@@ -465,34 +588,26 @@ private struct StreamCandidateRow: View {
                             Text("may have expired").badgeStyle(.warning)
                         }
                     }
-                    if let size = candidate.advertised.sizeBytes {
-                        Text(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
-                            .font(.casa(11))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
                 }
 
                 Spacer(minLength: 0)
 
-                if isBest {
-                    Image(systemName: "star.fill")
-                        .font(.casa(14))
-                        .foregroundStyle(Theme.accent)
+                VStack(alignment: .trailing, spacing: Metrics.s(6)) {
+                    if isBest {
+                        Image(systemName: "star.fill")
+                            .font(.casa(13))
+                            .foregroundStyle(Theme.accent)
+                    }
+                    Text(candidate.providerName)
+                        .font(.casa(11, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.75))
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: Metrics.s(120), alignment: .trailing)
                 }
-
-                Image(systemName: "play.fill")
-                    .font(.casa(14))
-                    .foregroundStyle(Theme.textSecondary)
             }
-            .padding(Metrics.s(14))
-            .background(isBest ? Theme.accent.opacity(0.1) : Theme.surface,
-                        in: RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous)
-                    .strokeBorder(isBest ? Theme.accent.opacity(0.4) : Color.clear, lineWidth: 1)
-            )
+            .padding(Metrics.s(16))
         }
-        .cardRowButtonStyle()
+        .buttonStyle(StreamRowStyle(isBest: isBest))
     }
 
     @ViewBuilder
@@ -501,11 +616,10 @@ private struct StreamCandidateRow: View {
         let verified = candidate.verification.verified != nil
         Text(res.shortLabel)
             .font(.casa(11, weight: .bold))
-            .foregroundStyle(verified ? Theme.onAccent : Theme.textPrimary)
+            .foregroundStyle(verified && res == .uhd2160 ? Theme.onAccent : Color.white)
             .padding(.horizontal, Metrics.s(6))
             .padding(.vertical, Metrics.s(2))
-            .background(verified ? (res == .uhd2160 ? Theme.accent : Theme.surfaceStrong) : Theme.surfaceStrong,
-                        in: Capsule())
+            .background(verified && res == .uhd2160 ? Theme.accent : Color.white.opacity(0.2), in: Capsule())
     }
 
     @ViewBuilder
@@ -526,6 +640,36 @@ private struct StreamCandidateRow: View {
 
     private func bitrateLabel(_ bps: Int) -> String {
         bps >= 1_000_000 ? String(format: "%.0f Mbps", Double(bps) / 1_000_000) : "\(bps / 1000) kbps"
+    }
+}
+
+/// A stream row on the glass panel: a soft card that gets a white frame while it has focus.
+private struct StreamRowStyle: ButtonStyle {
+    let isBest: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        StreamRowBody(configuration: configuration, isBest: isBest)
+    }
+
+    private struct StreamRowBody: View {
+        let configuration: ButtonStyleConfiguration
+        let isBest: Bool
+        @Environment(\.isFocused) private var focused
+
+        private var shape: RoundedRectangle {
+            RoundedRectangle(cornerRadius: Metrics.s(14), style: .continuous)
+        }
+
+        var body: some View {
+            configuration.label
+                .background(shape.fill(isBest ? Theme.accent.opacity(0.16) : Color.white.opacity(focused ? 0.16 : 0.09)))
+                .overlay(
+                    shape.strokeBorder(focused ? Color.white : (isBest ? Theme.accent.opacity(0.5) : Color.clear),
+                                       lineWidth: focused ? 4 : 1.5)
+                )
+                .opacity(configuration.isPressed ? 0.85 : 1)
+                .animation(.easeOut(duration: 0.12), value: focused)
+        }
     }
 }
 
@@ -570,51 +714,68 @@ private struct WhereToWatchRow: View {
     }
 }
 
-// MARK: - Per-provider status chip
+// MARK: - Chips
 
-private struct ProviderStatusChip: View {
+/// A source chip's words: its name, a dot while it's still searching or has failed, and how many streams it gave.
+private struct ProviderChipLabel: View {
     let outcome: ProviderOutcome
-    let isSelected: Bool
-    @Environment(\.cardFocused) private var focused
 
     var body: some View {
-        HStack(spacing: 4) {
-            Circle()
-                .fill(outcome.status.color)
-                .frame(width: 6, height: 6)
+        HStack(spacing: Metrics.s(6)) {
+            if case .finished = outcome.status {
+                EmptyView()
+            } else {
+                Circle()
+                    .fill(outcome.status.color)
+                    .frame(width: Metrics.s(7), height: Metrics.s(7))
+            }
             Text(outcome.name)
-                .font(.casa(11, weight: .semibold))
-                .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
             if case .finished(let count, _) = outcome.status {
                 // "0 of 20" when results were discarded as a different title, so the count
                 // is not mistaken for streams that should be listed.
                 Text(outcome.rejected > 0 ? "\(max(count - outcome.rejected, 0)) of \(count) matched" : "\(count)")
-                    .font(.casa(11)).foregroundStyle(Theme.textSecondary)
+                    .font(.casa(11))
+                    .opacity(0.65)
             }
         }
-        .padding(.horizontal, Metrics.s(8))
-        .padding(.vertical, Metrics.s(4))
-        .background(isSelected ? Theme.accent.opacity(0.32) : Theme.surface, in: Capsule())
-        .overlay(Capsule().strokeBorder(focused ? Color.white : (isSelected ? Theme.accent : Color.clear),
-                                        lineWidth: focused ? 3 : 1.5))
     }
 }
 
-/// The first chip: list the streams from every source.
-private struct SourceAllChip: View {
-    let isSelected: Bool
-    @Environment(\.cardFocused) private var focused
+/// A pill on the glass panel: outlined glass, solid white when it is the chosen one or has focus.
+private struct StreamChipStyle: ButtonStyle {
+    let selected: Bool
+    var round = false
 
-    var body: some View {
-        Text("All")
-            .font(.casa(11, weight: .semibold))
-            .foregroundStyle(isSelected ? Theme.textPrimary : Theme.textSecondary)
-            .padding(.horizontal, Metrics.s(10))
-            .padding(.vertical, Metrics.s(4))
-            .background(isSelected ? Theme.accent.opacity(0.32) : Theme.surface, in: Capsule())
-            .overlay(Capsule().strokeBorder(focused ? Color.white : (isSelected ? Theme.accent : Color.clear),
-                                            lineWidth: focused ? 3 : 1.5))
+    func makeBody(configuration: Configuration) -> some View {
+        StreamChipBody(configuration: configuration, selected: selected, round: round)
     }
+
+    private struct StreamChipBody: View {
+        let configuration: ButtonStyleConfiguration
+        let selected: Bool
+        let round: Bool
+        @Environment(\.isFocused) private var focused
+
+        var body: some View {
+            let lit = selected || focused
+            configuration.label
+                .font(.casa(13, weight: .semibold))
+                .foregroundStyle(lit ? Theme.onLight : Color.white)
+                .padding(.horizontal, round ? Metrics.s(12) : Metrics.s(16))
+                .padding(.vertical, Metrics.s(8))
+                .frame(minHeight: Metrics.s(38))
+                .background(Capsule().fill(lit ? Color.white.opacity(selected ? 0.95 : 0.85) : Color.white.opacity(0.14)))
+                .overlay(Capsule().strokeBorder(Color.white.opacity(lit ? 0 : 0.35), lineWidth: 1.5))
+                .scaleEffect(focused ? 1.06 : (configuration.isPressed ? 0.96 : 1))
+                .animation(.easeOut(duration: 0.15), value: focused)
+        }
+    }
+}
+
+/// Reruns the search when the quality setting changes or the refresh button is pressed.
+private struct RunKey: Equatable {
+    let mode: QualityMode
+    let refresh: Int
 }
 
 // MARK: - Playing resolution overlay

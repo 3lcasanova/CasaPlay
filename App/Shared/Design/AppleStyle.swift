@@ -711,6 +711,11 @@ struct TitleLogo: View {
     let title: String
     let tmdbID: Int?
     let isShow: Bool
+    /// How big the logo may be, where it sits, and the size of the plain title shown without one.
+    var logoWidth: CGFloat = 340
+    var logoHeight: CGFloat = 92
+    var alignment: Alignment = .leading
+    var plainSize: CGFloat = 58
 
     @State private var logoPath: String?
     @State private var resolved = false
@@ -730,14 +735,14 @@ struct TitleLogo: View {
                         Color.clear
                     }
                 }
-                .frame(maxWidth: 340, maxHeight: 92, alignment: .leading)
+                .frame(maxWidth: logoWidth, maxHeight: logoHeight, alignment: alignment)
             } else if resolved {
                 plainTitle
             } else {
-                Color.clear.frame(height: 92)
+                Color.clear.frame(height: logoHeight)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: alignment)
         .task(id: key) { await load() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
@@ -746,8 +751,9 @@ struct TitleLogo: View {
 
     private var plainTitle: some View {
         Text(title)
-            .font(.system(size: 58, weight: .heavy))
+            .font(.system(size: plainSize, weight: .heavy))
             .foregroundStyle(.white)
+            .multilineTextAlignment(alignment == .center ? .center : .leading)
             .lineLimit(2)
             .minimumScaleFactor(0.5)
             .shadow(color: .black.opacity(0.45), radius: 12, y: 3)
