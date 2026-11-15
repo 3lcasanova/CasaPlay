@@ -228,7 +228,7 @@ final class TMDBBrowseTests: XCTestCase {
         let transport = FakeTransport()
         transport.routes["/3/discover/movie"] = HTTPResponse(status: 200, body: Data(#"{"results":[{"id":1,"title":"A"}]}"#.utf8))
         transport.routes["/3/discover/tv"] = HTTPResponse(status: 200, body: Data(#"{"results":[{"id":2,"name":"B"}]}"#.utf8))
-        let client = makeClient(transport)
+        let client = TMDBClient(apiKey: "test-key", transport: transport)
         let since = Date(timeIntervalSince1970: 1_760_000_000)   // 2025-10-09
         let until = Date(timeIntervalSince1970: 1_763_164_800)   // 2025-11-15
 
