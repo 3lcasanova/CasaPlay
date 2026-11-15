@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BUNDLE_ID="com.casanova.CasaPlay"
-APP="build/Build/Products/Debug-iphoneos/CasaPlay.app"
+APP="build-ipad/Build/Products/Release-iphoneos/CasaPlay.app"
 
 list="$(mktemp)"
 trap 'rm -f "$list"' EXIT
@@ -82,7 +82,7 @@ fi
 
 echo "• Building CasaPlay for iPad (the first build takes a few minutes)"
 xcodebuild -project CasaPlay.xcodeproj -scheme CasaPlay-iOS \
-  -destination "platform=iOS,id=$udid" -derivedDataPath build \
+  -configuration Release -destination "platform=iOS,id=$udid" -derivedDataPath build-ipad \
   -allowProvisioningUpdates -quiet build
 
 if [ ! -d "$APP" ]; then
