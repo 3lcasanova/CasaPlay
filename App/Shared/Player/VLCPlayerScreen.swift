@@ -62,7 +62,7 @@ final class VLCPlayerModel {
     @ObservationIgnored private var resumeChecked = false
     @ObservationIgnored private var lastReport = Date.distantPast
     @ObservationIgnored private var isTorrent = false
-    @ObservationIgnored private var hideEmbeddedSubtitles = false
+    @ObservationIgnored var hideEmbeddedSubtitles = false
     @ObservationIgnored private var appliedInitialSubtitle = false
     /// A web stream that hasn't started by now is reported instead of spinning for ever. Torrents are left alone:
     /// finding peers can take a while, and the torrent engine reports its own failures.
@@ -318,7 +318,13 @@ struct VLCPlayerScreen: View {
     let item: MediaItem
     let url: URL
 
-    private enum Focus: Hashable { case surface, playPause }
+    private enum Focus: Hashable { case surface, playPause, row(String) }
+
+    #if os(tvOS)
+    /// The audio and subtitle pickers on Apple TV. The system Menu froze open on screen here, so
+    /// the player draws its own panel and controls exactly when it opens and closes.
+    private enum TrackPanel { case audio, subtitles }
+    #endif
 
     @State private var model = VLCPlayerModel()
     @State private var overlay = SubtitleOverlayModel()
@@ -326,6 +332,9 @@ struct VLCPlayerScreen: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var scrub: Double?
     @FocusState private var focus: Focus?
+    #if os(tvOS)
+    @State private var trackPanel: TrackPanel?
+    #endif
 
     var body: some View {
         ZStack {
@@ -337,6 +346,11 @@ struct VLCPlayerScreen: View {
             if controlsVisible {
                 controls.transition(.opacity)
             }
+            #if os(tvOS)
+            if let panel = trackPanel {
+                trackPanelView(panel).transition(.opacity)
+            }
+            #endif
         }
         .animation(.easeOut(duration: 0.2), value: controlsVisible)
         .task { await begin() }
@@ -350,11 +364,17 @@ struct VLCPlayerScreen: View {
             hideTask?.cancel()
             model.stop()
         }
-        .onChange(of: app.activeSubtitle(for: item.id)?.id) { _, _ in syncSubtitles() }
+        .onChange(of: app.activeSubtitle(for: item.id)?.id) { _, newValue in
+            syncSubtitles()
+            // A downloaded file that starts showing must not double up with a track inside the video.
+            model.hideEmbeddedSubtitles = newValue != nil
+            if newValue != nil, model.subtitleIndex != -1 { model.selectSubtitle(-1) }
+        }
         #if os(tvOS)
         .onPlayPauseCommand { model.togglePlay(); showControls() }
         .onExitCommand {
-            // Menu hides the controls first, and leaves the player on the second press.
+            // Menu closes an open picker first, then hides the controls, then leaves the player.
+            if trackPanel != nil { closeTrackPanel(); return }
             if controlsVisible && model.phase == .playing { hideControls() } else { dismiss() }
         }
         #endif
@@ -415,6 +435,9 @@ struct VLCPlayerScreen: View {
         hideTask = Task {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             guard !Task.isCancelled, scrub == nil, model.phase == .playing else { return }
+            #if os(tvOS)
+            guard trackPanel == nil else { return }
+            #endif
             hideControls()
         }
     }
@@ -489,16 +512,11 @@ struct VLCPlayerScreen: View {
                 }
                 .font(.casa(12))
                 .foregroundStyle(Theme.textSecondary)
-                HStack(spacing: Metrics.s(24)) {
-                    controlButton("gobackward.10", label: "Back 10 seconds") { model.skip(-10) }
-                    controlButton(model.isPlaying ? "pause.fill" : "play.fill",
-                                  label: model.isPlaying ? "Pause" : "Play") { model.togglePlay() }
-                        .focused($focus, equals: .playPause)
-                    controlButton("goforward.10", label: "Forward 10 seconds") { model.skip(10) }
-                    Spacer()
-                    audioMenu
-                    subtitleMenu
-                }
+                #if os(tvOS)
+                if trackPanel == nil { buttonRow }
+                #else
+                buttonRow
+                #endif
             }
             .padding(.horizontal, Metrics.screenPadding)
             .padding(.top, Metrics.s(40))
@@ -509,6 +527,135 @@ struct VLCPlayerScreen: View {
             )
         }
     }
+
+    private var buttonRow: some View {
+        HStack(spacing: Metrics.s(24)) {
+            controlButton("gobackward.10", label: "Back 10 seconds") { model.skip(-10) }
+            controlButton(model.isPlaying ? "pause.fill" : "play.fill",
+                          label: model.isPlaying ? "Pause" : "Play") { model.togglePlay() }
+                .focused($focus, equals: .playPause)
+            controlButton("goforward.10", label: "Forward 10 seconds") { model.skip(10) }
+            Spacer()
+            #if os(tvOS)
+            trackButton("waveform", label: "Audio", panel: .audio,
+                        enabled: model.audioTracks.filter { $0.id >= 0 }.count > 1)
+            trackButton(subtitlesAreOn ? "captions.bubble.fill" : "captions.bubble", label: "Subtitles", panel: .subtitles,
+                        enabled: !model.subtitleTracks.filter { $0.id >= 0 }.isEmpty
+                            || !app.subtitleOptions(for: item.id).isEmpty)
+            #else
+            audioMenu
+            subtitleMenu
+            #endif
+        }
+    }
+
+    #if os(tvOS)
+    private var subtitlesAreOn: Bool {
+        model.subtitleIndex != -1 || app.activeSubtitle(for: item.id) != nil
+    }
+
+    private struct TrackRow: Identifiable {
+        let id: String
+        let title: String
+        let selected: Bool
+        let action: () -> Void
+    }
+
+    private func trackButton(_ symbol: String, label: String, panel: TrackPanel, enabled: Bool) -> some View {
+        Button {
+            hideTask?.cancel()
+            trackPanel = panel
+        } label: {
+            menuIcon(symbol)
+        }
+        .disabled(!enabled)
+        .accessibilityLabel(label)
+    }
+
+    private var audioRows: [TrackRow] {
+        model.audioTracks.filter { $0.id >= 0 }.map { track in
+            TrackRow(id: "audio-\(track.id)", title: track.name, selected: model.audioIndex == track.id) {
+                model.selectAudio(track.id)
+            }
+        }
+    }
+
+    private var subtitleRows: [TrackRow] {
+        let activeFile = app.activeSubtitle(for: item.id)
+        let isOff = model.subtitleIndex == -1 && activeFile == nil
+        var rows = [TrackRow(id: "sub-off", title: "Off", selected: isOff) {
+            model.selectSubtitle(-1)
+            app.selectSubtitle(nil, for: item.id)
+        }]
+        for option in app.subtitleOptions(for: item.id) {
+            rows.append(TrackRow(
+                id: "sub-file-\(option.id)",
+                title: option.track.displayName,
+                selected: activeFile?.id == option.id && model.subtitleIndex == -1
+            ) {
+                model.selectSubtitle(-1)
+                app.selectSubtitle(option.id, for: item.id)
+            })
+        }
+        for track in model.subtitleTracks where track.id >= 0 {
+            rows.append(TrackRow(id: "sub-in-\(track.id)", title: track.name, selected: model.subtitleIndex == track.id) {
+                app.selectSubtitle(nil, for: item.id)
+                model.selectSubtitle(track.id)
+            })
+        }
+        return rows
+    }
+
+    private func trackPanelView(_ panel: TrackPanel) -> some View {
+        let rows = panel == .audio ? audioRows : subtitleRows
+        return VStack(alignment: .leading, spacing: Metrics.s(12)) {
+            Text(panel == .audio ? "Audio" : "Subtitles")
+                .font(.casa(15, weight: .semibold))
+                .foregroundStyle(Theme.textSecondary)
+                .padding(.horizontal, Metrics.s(16))
+            ScrollView {
+                VStack(spacing: Metrics.s(6)) {
+                    ForEach(rows) { row in
+                        Button {
+                            row.action()
+                            closeTrackPanel()
+                        } label: {
+                            HStack(spacing: Metrics.s(12)) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: Metrics.s(15), weight: .bold))
+                                    .opacity(row.selected ? 1 : 0)
+                                Text(row.title)
+                                    .font(.casa(16, weight: .medium))
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .buttonStyle(TrackRowStyle())
+                        .focused($focus, equals: .row(row.id))
+                    }
+                }
+                .padding(Metrics.s(6))
+            }
+        }
+        .padding(Metrics.s(18))
+        .frame(width: Metrics.s(520))
+        .frame(maxHeight: Metrics.s(430))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: Metrics.s(26), style: .continuous))
+        .focusSection()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        .padding(.trailing, Metrics.screenPadding)
+        .padding(.bottom, Metrics.s(110))
+        .onAppear {
+            focus = .row(rows.first { $0.selected }?.id ?? rows.first?.id ?? "")
+        }
+    }
+
+    private func closeTrackPanel() {
+        trackPanel = nil
+        Task { showControls(focusPlayPause: true) }
+    }
+    #endif
 
     @ViewBuilder private var progressBar: some View {
         #if os(tvOS)
@@ -642,3 +789,31 @@ struct VLCPlayerScreen: View {
             : String(format: "%d:%02d", minutes, secs)
     }
 }
+
+#if os(tvOS)
+/// A row in the Apple TV audio and subtitle picker: light pill while focused.
+private struct TrackRowStyle: ButtonStyle {
+    func makeBody(configuration: ButtonStyleConfiguration) -> some View {
+        TrackRowLabel(configuration: configuration)
+    }
+}
+
+private struct TrackRowLabel: View {
+    let configuration: ButtonStyleConfiguration
+    @Environment(\.isFocused) private var focused
+
+    var body: some View {
+        configuration.label
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .foregroundStyle(focused ? Color.black : Color.white)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(focused ? Color.white.opacity(0.92) : Color.clear)
+            )
+            .scaleEffect(focused ? 1.03 : 1)
+            .animation(.easeOut(duration: 0.15), value: focused)
+    }
+}
+#endif
