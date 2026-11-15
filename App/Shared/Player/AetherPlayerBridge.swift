@@ -69,12 +69,19 @@ final class AetherPlayerModel {
     /// finding peers can take a while, and the torrent engine reports its own failures.
     private static let startLimit: TimeInterval = 60
 
+    /// Plain breadcrumbs, so a console log shows the last step reached if the app ever stops here.
+    nonisolated private static func trace(_ message: String) {
+        print("[Aether] \(message)")
+    }
+
     // MARK: Opening
 
     /// Opens the stream. Torrent links are served over local HTTP first, because the engine reads web addresses.
     func open(url: URL, headers: [String: String]?, startAt: TimeInterval) async {
         phase = .loading
+        Self.trace("open \(url.scheme ?? "?")")
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        Self.trace("audio session ready")
 
         var playable = url
         if url.scheme == TorrentResourceLoader.scheme {
@@ -95,8 +102,10 @@ final class AetherPlayerModel {
             fail("The Aether engine couldn't start: \(error.localizedDescription)")
             return
         }
+        Self.trace("engine created")
         engine = player
         bind(player)
+        Self.trace("events bound")
 
         // Let the picture view mount before the file loads.
         try? await Task.sleep(nanoseconds: 150_000_000)
@@ -112,8 +121,10 @@ final class AetherPlayerModel {
 
         var options = LoadOptions()
         if let headers, !headers.isEmpty { options.httpHeaders = headers }
+        Self.trace("loading")
         do {
             _ = try await player.load(url: playable, startPosition: startAt > 5 ? startAt : nil, options: options)
+            Self.trace("load returned")
         } catch is CancellationError {
             return
         } catch {
@@ -169,14 +180,17 @@ final class AetherPlayerModel {
         bag.removeAll()
 
         player.$playbackPhase
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] value in self?.phaseChanged(value) }
             .store(in: &bag)
 
         player.clock.$currentTime
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] value in self?.timeChanged(value) }
             .store(in: &bag)
 
         player.clock.$sourceTime
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] value in
                 self?.sourceTime = value
                 self?.refreshCues()
@@ -184,22 +198,26 @@ final class AetherPlayerModel {
             .store(in: &bag)
 
         player.$duration
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] value in
                 if value.isFinite, value > 0 { self?.duration = value }
             }
             .store(in: &bag)
 
         player.$audioTracks
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] tracks in
                 self?.audioTracks = tracks.map { AetherTrack(id: $0.id, name: Self.audioName($0)) }
             }
             .store(in: &bag)
 
         player.$activeAudioTrackIndex
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] value in self?.audioIndex = value ?? -1 }
             .store(in: &bag)
 
         player.$subtitleTracks
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] tracks in
                 self?.subtitleTracks = tracks.map { AetherTrack(id: $0.id, name: Self.subtitleName($0)) }
             }
@@ -207,10 +225,12 @@ final class AetherPlayerModel {
 
         player.$activeSubtitleTrackIndex
             .combineLatest(player.$isSubtitleActive)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] index, active in self?.subtitleIndex = active ? (index ?? -1) : -1 }
             .store(in: &bag)
 
         player.$subtitleCues
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] value in
                 self?.allCues = value
                 self?.refreshCues()
@@ -218,11 +238,13 @@ final class AetherPlayerModel {
             .store(in: &bag)
 
         player.$videoFormat
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] format in self?.formatLabel = Self.label(for: format) }
             .store(in: &bag)
     }
 
     private func phaseChanged(_ value: PlaybackPhase) {
+        Self.trace("phase \(value)")
         if case .failed = phase { return }
         switch value {
         case .idle, .loading:
@@ -262,6 +284,7 @@ final class AetherPlayerModel {
     }
 
     private func fail(_ message: String) {
+        Self.trace("failed: \(message)")
         startGuard?.cancel()
         guard !failedOnce else { return }
         failedOnce = true

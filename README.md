@@ -32,7 +32,7 @@ This is Phase 0 and the start of Phase 1 from the design canvas.
 **Not built yet**
 - Source adapters (SMB, NFS, WebDAV, Plex, Jellyfin), library scanning and database
 - ASS/SSA styling and image subtitles (PGS, VobSub) in the overlay
-- Compatibility engines: Aether (FFmpeg + VideoToolbox, switches the TV into HDR10 and Dolby Vision) and VLCKit. Settings → Video engine picks between them; Auto tries Aether and falls back to VLC.
+- Compatibility engines: Aether (FFmpeg + VideoToolbox, switches the TV into HDR10 and Dolby Vision) and VLCKit. Settings → Video engine picks between them: VLC is the standard; Auto tries Aether first and falls back to VLC; Aether is still being tested on devices. `bash Scripts/launch-with-log.sh` opens the app on a connected device and prints what it says, for chasing a crash.
 - iCloud sync, per-profile watch history
 
 ## BitTorrent (experimental)

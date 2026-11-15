@@ -15,7 +15,7 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     let item: MediaItem
 
-    @AppStorage(VideoEnginePreference.storageKey) private var enginePreference = VideoEnginePreference.auto
+    @AppStorage(VideoEnginePreference.storageKey) private var enginePreference = VideoEnginePreference.standard
     /// Set when Aether couldn't open this file (or the viewer asked), so VLC plays it instead.
     @State private var useVLCInstead = false
 

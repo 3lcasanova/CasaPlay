@@ -89,6 +89,11 @@ final class VideoEnginePreferenceTests: XCTestCase {
         XCTAssertFalse(VideoEnginePreference.vlc.fallsBackToVLC)
     }
 
+    func testTheStandardChoiceIsTheSteadyVLCEngine() {
+        XCTAssertEqual(VideoEnginePreference.standard, .vlc)
+        XCTAssertFalse(VideoEnginePreference.standard.prefersAether)
+    }
+
     func testSavedValuesRoundTrip() {
         for choice in VideoEnginePreference.allCases {
             XCTAssertEqual(VideoEnginePreference(rawValue: choice.rawValue), choice)
