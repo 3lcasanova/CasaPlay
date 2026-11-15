@@ -1,8 +1,10 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// Two engines. Files Apple's player can open use AVPlayerViewController, so Apple TV gets the
+// Three engines. Files Apple's player can open use AVPlayerViewController, so Apple TV gets the
 // native transport bar, subtitle and audio menus, HDR and Dolby Vision switching for free.
-// Everything else (MKV, AVI, WebM, DTS, TrueHD, PGS subtitles...) goes to VLCPlayerScreen.
+// Everything else (MKV, AVI, WebM, DTS, TrueHD, PGS subtitles...) goes to AetherPlayerScreen, which also
+// switches the TV into HDR10 or Dolby Vision, or to VLCPlayerScreen. Settings → Video engine decides, and
+// Auto tries Aether first and uses VLC when Aether can't open the file.
 
 import SwiftUI
 import AVKit
@@ -13,9 +15,16 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     let item: MediaItem
 
+    @AppStorage(VideoEnginePreference.storageKey) private var enginePreference = VideoEnginePreference.auto
+    /// Set when Aether couldn't open this file (or the viewer asked), so VLC plays it instead.
+    @State private var useVLCInstead = false
+
     var body: some View {
         let decision = app.router.decide(for: item.file)
-        let usesVLC = decision.engine == .compatibility
+        let needsOwnEngine = decision.engine == .compatibility
+        let usesAether = needsOwnEngine && enginePreference.prefersAether && !useVLCInstead
+        let usesVLC = needsOwnEngine && !usesAether
+        let ownPlayer = usesAether || usesVLC
 
         ZStack {
             Color.black.ignoresSafeArea()
@@ -44,6 +53,21 @@ struct PlayerScreen: View {
                         detail: "This title has no playable address. Connect a source to play it."
                     )
                 }
+            } else if usesAether {
+                if let url = item.streamURL {
+                    AetherPlayerScreen(
+                        item: item,
+                        url: url,
+                        fallsBackToVLC: enginePreference.fallsBackToVLC,
+                        onUseVLC: { useVLCInstead = true }
+                    )
+                    .ignoresSafeArea()
+                } else {
+                    message(
+                        title: "No source yet",
+                        detail: "This title has no playable address. Connect a source to play it."
+                    )
+                }
             } else if usesVLC {
                 if let url = item.streamURL {
                     VLCPlayerScreen(item: item, url: url)
@@ -61,7 +85,7 @@ struct PlayerScreen: View {
                 )
             }
 
-            overlayLayout(usesVLC: usesVLC)
+            overlayLayout(usesVLC: ownPlayer)
         }
     }
 

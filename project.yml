@@ -34,6 +34,11 @@ packages:
   VLCKitSPM:
     url: https://github.com/koombea/vlckit-spm
     from: 3.6.0
+  # AetherEngine 6.x (LGPL-3.0 with an App Store exception). Plays MKV with real HDR10 and Dolby Vision
+  # on the TV. Pinned to one 6.x release: the 7.x line needs iOS and tvOS 18 and a newer Xcode.
+  AetherEngine:
+    url: https://github.com/superuser404notfound/AetherEngine
+    exactVersion: 6.89.1
 
 targets:
   CasaPlay-iOS:
@@ -46,6 +51,7 @@ targets:
       - package: CasaPlayKit
       - package: VLCKitSPM
         product: VLCKitSPM
+      - package: AetherEngine
     settings:
       base:
         PRODUCT_NAME: CasaPlay
@@ -94,6 +100,7 @@ targets:
       - package: CasaPlayKit
       - package: VLCKitSPM
         product: VLCKitSPM
+      - package: AetherEngine
       # The Top Shelf extension is not listed here on purpose. It needs its own new App ID, and a
       # free Apple account can only create 10 per 7 days. See project-topshelf.yml.
     settings:
