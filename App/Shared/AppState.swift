@@ -147,7 +147,7 @@ final class AppState {
     /// A film or show chosen outside the app, such as from the Apple TV Top Shelf. Home opens it, then clears this.
     var pendingTitle: PendingTitle?
     var playing: MediaItem?
-    /// The compatibility engine (VLC) is on, so MKV and other files Apple's player can't open still play.
+    /// The compatibility engine (Aether) is on, so MKV and other files Apple's player can't open still play.
     var router = PlaybackRouter(compatibilityEngineEnabled: true)
     /// Set when the user picks a torrent stream; clears after the sheet is dismissed.
     var pendingTorrentHash: InfoHash?

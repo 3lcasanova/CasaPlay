@@ -1,11 +1,11 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// VLC can't open CasaPlay's casaplay-torrent:// links: those only work through AVPlayer's
-// resource loader. This serves the same SHA-1-verified torrent pieces over HTTP instead.
+// The Aether engine can't open CasaPlay's casaplay-torrent:// links: those only work through AVPlayer's
+// resource loader, and the engine reads web addresses. This serves the same SHA-1-verified torrent pieces over HTTP instead.
 //
 // Safety: the listener only accepts connections on the loopback interface, so nothing else on
 // the network can reach it, and every address carries a random token, so other apps on the
-// device can't guess one. Each request is a byte range, so VLC can seek anywhere in the file.
+// device can't guess one. Each request is a byte range, so the player can seek anywhere in the file.
 
 import Foundation
 import Network
@@ -44,7 +44,7 @@ final class TorrentHTTPServer: @unchecked Sendable {
 
     private let lock = NSLock()
     private var failure: String?
-    /// The engine's own reason for the last failed read ("Paused", "timed out"…). VLC only
+    /// The torrent engine's own reason for the last failed read ("Paused", "timed out"…). The video engine only
     /// reports "can't open", so the player asks here for the real cause.
     var lastFailureMessage: String? { lock.withLock { failure } }
 
@@ -53,7 +53,7 @@ final class TorrentHTTPServer: @unchecked Sendable {
 
     // MARK: - Public
 
-    /// The loopback address VLC can open for a casaplay-torrent:// link.
+    /// The loopback address the video engine can open for a casaplay-torrent:// link.
     func localURL(for torrentURL: URL) async throws -> URL {
         guard let (hash, index) = TorrentResourceLoader.parse(torrentURL) else { throw TorrentHTTPError.badLink }
         let port = try await ensureRunning()
@@ -138,7 +138,7 @@ final class TorrentHTTPServer: @unchecked Sendable {
             await self?.handle(connection)
             await Self.finish(connection)
         }
-        // When VLC closes the connection (it does on every seek), stop reading pieces for it.
+        // When the player closes the connection (it does on every seek), stop reading pieces for it.
         connection.stateUpdateHandler = { state in
             switch state {
             case .failed, .cancelled: task.cancel()

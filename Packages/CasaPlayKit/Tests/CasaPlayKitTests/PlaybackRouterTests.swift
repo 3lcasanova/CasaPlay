@@ -72,32 +72,3 @@ final class PlaybackRouterTests: XCTestCase {
         XCTAssertTrue(decisions.contains(.unsupported))
     }
 }
-
-final class VideoEnginePreferenceTests: XCTestCase {
-    func testAutoTriesAetherFirstAndFallsBackToVLC() {
-        XCTAssertTrue(VideoEnginePreference.auto.prefersAether)
-        XCTAssertTrue(VideoEnginePreference.auto.fallsBackToVLC)
-    }
-
-    func testAetherOnlyHasNoFallback() {
-        XCTAssertTrue(VideoEnginePreference.aether.prefersAether)
-        XCTAssertFalse(VideoEnginePreference.aether.fallsBackToVLC)
-    }
-
-    func testVLCOnlyNeverUsesAether() {
-        XCTAssertFalse(VideoEnginePreference.vlc.prefersAether)
-        XCTAssertFalse(VideoEnginePreference.vlc.fallsBackToVLC)
-    }
-
-    func testTheStandardChoiceIsTheSteadyVLCEngine() {
-        XCTAssertEqual(VideoEnginePreference.standard, .vlc)
-        XCTAssertFalse(VideoEnginePreference.standard.prefersAether)
-    }
-
-    func testSavedValuesRoundTrip() {
-        for choice in VideoEnginePreference.allCases {
-            XCTAssertEqual(VideoEnginePreference(rawValue: choice.rawValue), choice)
-        }
-        XCTAssertNil(VideoEnginePreference(rawValue: "something else"))
-    }
-}

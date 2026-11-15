@@ -3,7 +3,7 @@
 // The playback router looks at what is inside a file and picks an engine:
 //   1. Apple engine (AVPlayer + AVKit) whenever the file can play natively.
 //   2. A media server (Plex or Jellyfin) that remuxes or transcodes to HLS.
-//   3. The compatibility engine (VLCKit), for everything else.
+//   3. The compatibility engine (Aether: FFmpeg + VideoToolbox), for everything else.
 
 import Foundation
 
@@ -90,7 +90,7 @@ public struct PlaybackDecision: Equatable, Sendable {
 
 public struct PlaybackRouter: Sendable {
     public var capabilities: DeviceCapabilities
-    /// False by default so the Kit stays testable on its own; the app turns it on because it bundles VLCKit.
+    /// False by default so the Kit stays testable on its own; the app turns it on because it bundles the Aether engine.
     public var compatibilityEngineEnabled: Bool
 
     public init(

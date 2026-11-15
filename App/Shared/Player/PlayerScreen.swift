@@ -1,10 +1,9 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// Three engines. Files Apple's player can open use AVPlayerViewController, so Apple TV gets the
+// Two engines. Files Apple's player can open use AVPlayerViewController, so Apple TV gets the
 // native transport bar, subtitle and audio menus, HDR and Dolby Vision switching for free.
-// Everything else (MKV, AVI, WebM, DTS, TrueHD, PGS subtitles...) goes to AetherPlayerScreen, which also
-// switches the TV into HDR10 or Dolby Vision, or to VLCPlayerScreen. Settings → Video engine decides, and
-// Auto tries Aether first and uses VLC when Aether can't open the file.
+// Everything else (MKV, AVI, WebM, DTS, TrueHD, PGS subtitles...) goes to AetherPlayerScreen, which decodes
+// on the Apple hardware and also switches the TV into HDR10 or Dolby Vision.
 
 import SwiftUI
 import AVKit
@@ -15,16 +14,10 @@ struct PlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     let item: MediaItem
 
-    @AppStorage(VideoEnginePreference.storageKey) private var enginePreference = VideoEnginePreference.standard
-    /// Set when Aether couldn't open this file (or the viewer asked), so VLC plays it instead.
-    @State private var useVLCInstead = false
-
     var body: some View {
         let decision = app.router.decide(for: item.file)
-        let needsOwnEngine = decision.engine == .compatibility
-        let usesAether = needsOwnEngine && enginePreference.prefersAether && !useVLCInstead
-        let usesVLC = needsOwnEngine && !usesAether
-        let ownPlayer = usesAether || usesVLC
+        // Files Apple's player can't open, which the Aether player draws with its own controls.
+        let ownPlayer = decision.engine == .compatibility
 
         ZStack {
             Color.black.ignoresSafeArea()
@@ -53,24 +46,9 @@ struct PlayerScreen: View {
                         detail: "This title has no playable address. Connect a source to play it."
                     )
                 }
-            } else if usesAether {
+            } else if ownPlayer {
                 if let url = item.streamURL {
-                    AetherPlayerScreen(
-                        item: item,
-                        url: url,
-                        fallsBackToVLC: enginePreference.fallsBackToVLC,
-                        onUseVLC: { useVLCInstead = true }
-                    )
-                    .ignoresSafeArea()
-                } else {
-                    message(
-                        title: "No source yet",
-                        detail: "This title has no playable address. Connect a source to play it."
-                    )
-                }
-            } else if usesVLC {
-                if let url = item.streamURL {
-                    VLCPlayerScreen(item: item, url: url)
+                    AetherPlayerScreen(item: item, url: url)
                         .ignoresSafeArea()
                 } else {
                     message(
@@ -85,7 +63,7 @@ struct PlayerScreen: View {
                 )
             }
 
-            overlayLayout(usesVLC: ownPlayer)
+            overlayLayout(ownPlayer: ownPlayer)
         }
     }
 
@@ -93,7 +71,7 @@ struct PlayerScreen: View {
 
     /// Close button at the top. At the bottom, one row: what is happening (buffering, subtitle making) on the
     /// left and the subtitle button on the right, sitting just above where the player's own controls appear.
-    private func overlayLayout(usesVLC: Bool) -> some View {
+    private func overlayLayout(ownPlayer: Bool) -> some View {
         VStack(spacing: 0) {
             #if !os(tvOS)
             HStack {
@@ -122,21 +100,21 @@ struct PlayerScreen: View {
                 }
                 Spacer(minLength: 12)
                 #if !os(tvOS)
-                // The compatibility player has its own subtitle menu.
-                if !usesVLC { subtitleMenu }
+                // The Aether player has its own subtitle menu.
+                if !ownPlayer { subtitleMenu }
                 #endif
             }
             .padding(.horizontal, Platform.isTV ? 80 : 20)
-            .padding(.bottom, bottomInset(usesVLC: usesVLC))
+            .padding(.bottom, bottomInset(ownPlayer: ownPlayer))
         }
     }
 
     /// How far above the bottom edge the row sits, so it clears the player's controls.
-    private func bottomInset(usesVLC: Bool) -> CGFloat {
+    private func bottomInset(ownPlayer: Bool) -> CGFloat {
         #if os(tvOS)
-        return usesVLC ? 300 : 240
+        return ownPlayer ? 300 : 240
         #else
-        return usesVLC ? 190 : 84
+        return ownPlayer ? 190 : 84
         #endif
     }
 

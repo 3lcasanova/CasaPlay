@@ -32,7 +32,7 @@ This is Phase 0 and the start of Phase 1 from the design canvas.
 **Not built yet**
 - Source adapters (SMB, NFS, WebDAV, Plex, Jellyfin), library scanning and database
 - ASS/SSA styling and image subtitles (PGS, VobSub) in the overlay
-- Compatibility engines: Aether (FFmpeg + VideoToolbox, switches the TV into HDR10 and Dolby Vision) and VLCKit. Settings → Video engine picks between them: VLC is the standard; Auto tries Aether first and falls back to VLC; Aether is still being tested on devices. `bash Scripts/launch-with-log.sh` opens the app on a connected device and prints what it says, for chasing a crash.
+- Compatibility engine: Aether (FFmpeg demuxing, Apple hardware decoding through VideoToolbox, switches the TV into HDR10 and Dolby Vision). It is the only engine for MKV and the other files Apple's player can't open; VLC was removed because it decoded on the processor and did not play smoothly. `bash Scripts/launch-with-log.sh` opens the app on a connected device and prints what it says, for chasing a crash.
 - iCloud sync, per-profile watch history
 
 ## BitTorrent (experimental)
@@ -111,5 +111,5 @@ Packages/CasaPlayKit/        models, parsers, subtitles, playback router, tests
 ## Before App Store
 
 - App icons exist: `AppIcon` for iPhone and iPad, and `App Icon & Top Shelf Image` for Apple TV (three-layer parallax icon plus Top Shelf and Top Shelf Wide). `Scripts/make_tv_assets.py` regenerates the Apple TV set.
-- Check the licence of any playback library you add. VLCKit is LGPL. AetherEngine (6.89.1, pinned in `project.yml`) is LGPL-3.0 with an App Store exception, and the FFmpeg build it brings is LGPL-2.1+: keep both as separate frameworks and keep their notices if CasaPlay is ever shared.
+- Check the licence of any playback library you add. AetherEngine (7.67.1, pinned in `project.yml`) is LGPL-3.0 with an App Store exception, and the FFmpeg build it brings is LGPL-2.1+: keep both as separate frameworks and keep their notices if CasaPlay is ever shared.
 - TMDB requires its attribution and logo. OpenSubtitles needs an API key.

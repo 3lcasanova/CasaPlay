@@ -513,7 +513,7 @@ struct StreamSourcesView: View {
         results = SourceResults()
         let providers = await buildProviders()
         guard !Task.isCancelled else { return }
-        // VLC plays what Apple's player can't, so MKV and similar files aren't marked "can't play".
+        // Aether plays what Apple's player can't, so MKV and similar files aren't marked "can't play".
         let probe = PlaylistProbe(fallback: AVFoundationProbe(compatibilityPlays: true), compatibilityPlays: true)
         let agg = SourceAggregator(providers: providers, probe: probe)
         for await snapshot in agg.run(request, mode: mode) {
@@ -569,9 +569,9 @@ struct StreamSourcesView: View {
             let streamHeaders = headers.isEmpty ? nil : headers
             let ext = url.pathExtension.lowercased()
             // mp4, m4v, mov and m3u8 go to Apple's player. mkv, avi, webm, ts and anything
-            // unrecognised go to VLC, which opens whatever the link turns out to be.
+            // unrecognised go to Aether, which opens whatever the link turns out to be.
             var container = MediaContainer(fileExtension: ext)
-            // Apple's player was already refused on this link, so it would be refused again: go to VLC.
+            // Apple's player was already refused on this link, so it would be refused again: go to Aether.
             if case .unreadable(let note) = candidate.verification, note == StreamCandidate.refusedByAppleNote {
                 container = .other
             }

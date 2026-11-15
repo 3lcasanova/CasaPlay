@@ -11,7 +11,7 @@ import Foundation
 
 public struct AVFoundationProbe: StreamProbe {
     public let timeout: TimeInterval
-    /// True when the app bundles a compatibility player (VLC). A file Apple's player can't open
+    /// True when the app bundles a compatibility player (Aether). A file Apple's player can't open
     /// is then still playable, so it isn't marked "can't play".
     public let compatibilityPlays: Bool
 
@@ -41,14 +41,14 @@ public struct AVFoundationProbe: StreamProbe {
         } catch {
             let ns = error as NSError
             if ns.domain == NSURLErrorDomain, [NSURLErrorUserAuthenticationRequired, NSURLErrorNoPermissionsToReadFile].contains(ns.code) {
-                // Only Apple's request was refused. With VLC bundled, keep the stream and let VLC try it:
+                // Only Apple's request was refused. With Aether bundled, keep the stream and let Aether try it:
                 // marking it "can't play" hid every stream from an add-on whose server turns Apple's player away.
                 return compatibilityPlays
                     ? .unreadable(StreamCandidate.refusedByAppleNote)
                     : .unplayable("The link was refused; it may have expired.")
             }
             // A network failure (404, no route) is a dead link. Anything else means AVFoundation
-            // doesn't understand the file, which VLC may.
+            // doesn't understand the file, which Aether may.
             if compatibilityPlays, ns.domain != NSURLErrorDomain { return .unreadable(StreamCandidate.compatibilityNote) }
             return .unplayable("Apple's player can't open this stream (\(ns.localizedDescription)).")
         }

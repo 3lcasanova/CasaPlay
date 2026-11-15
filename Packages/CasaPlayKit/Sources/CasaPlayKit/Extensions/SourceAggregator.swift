@@ -56,11 +56,11 @@ public struct StreamCandidate: Identifiable, Equatable, Sendable {
     /// Text shown when an external link is treated as a stream.
     public static let externalReason = "This opens in another app or website."
 
-    /// Shown for a stream Apple's player can't open when the compatibility player (VLC) can.
+    /// Shown for a stream Apple's player can't open when the compatibility player (Aether) can.
     public static let compatibilityNote = "Plays in CasaPlay's compatibility player; checked once playback starts."
 
-    /// Shown when Apple's loader was turned away (401/403) but the compatibility player (VLC) has not tried yet.
-    /// Servers often refuse Apple's requests while accepting VLC's, so the stream is kept and played in VLC.
+    /// Shown when Apple's loader was turned away (401/403) but the compatibility player (Aether) has not tried yet.
+    /// Servers often refuse Apple's requests while accepting Aether's, so the stream is kept and played in Aether.
     public static let refusedByAppleNote = "Apple's player was refused; plays in CasaPlay's compatibility player instead."
 
     /// For a "Where to watch" entry: the service ("Amazon Prime Video") and the offer
@@ -594,7 +594,7 @@ public struct PlaylistProbe: StreamProbe {
     let transport: HTTPTransport
     let fallback: (any StreamProbe)?
     let timeout: TimeInterval
-    /// True when the app bundles a compatibility player (VLC). Then MKV, AVI and similar files
+    /// True when the app bundles a compatibility player (Aether). Then MKV, AVI and similar files
     /// are playable, not "can't play".
     let compatibilityPlays: Bool
 

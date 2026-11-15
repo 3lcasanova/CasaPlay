@@ -1,9 +1,9 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// The Aether player. It plays what Apple's player can't open (MKV, WebM, AVI, DTS, TrueHD, PGS subtitles) and,
-// unlike VLC, switches the TV into HDR10 or Dolby Vision. The engine draws only the picture, so this file adds the
-// controls, the audio and subtitle menus, resume, and CasaPlay's own subtitle overlay. If Aether can't open a file,
-// the VLC player takes it (unless the setting says Aether only).
+// The Aether player, the one engine for everything Apple's player can't open (MKV, WebM, AVI, DTS, TrueHD, PGS
+// subtitles). It decodes on the Apple hardware and switches the TV into HDR10 or Dolby Vision. The engine draws only
+// the picture, so this file adds the controls, the audio and subtitle menus, resume, and CasaPlay's own subtitle
+// overlay. If Aether can't open a file, the player says why.
 
 import SwiftUI
 import AVFoundation
@@ -64,10 +64,6 @@ struct AetherPlayerScreen: View {
     @Environment(\.dismiss) private var dismiss
     let item: MediaItem
     let url: URL
-    /// True when VLC should take over by itself if Aether can't open the file.
-    let fallsBackToVLC: Bool
-    /// Hands this file to the VLC player instead.
-    let onUseVLC: () -> Void
 
     private enum Focus: Hashable { case surface, playPause, row(String) }
 
@@ -139,12 +135,6 @@ struct AetherPlayerScreen: View {
         let overlay = self.overlay
         model.onProgress = { seconds in app.updateProgress(id: itemID, seconds: seconds) }
         model.onTime = { seconds in overlay.time = seconds }
-        // When Aether can't open the file, VLC plays it instead.
-        let fallBack = fallsBackToVLC
-        let useVLC = onUseVLC
-        model.onFailure = { _ in
-            if fallBack { useVLC() }
-        }
         await model.open(
             url: url,
             headers: item.streamHeaders,
@@ -303,7 +293,6 @@ struct AetherPlayerScreen: View {
                 .focused($focus, equals: .playPause)
             controlButton("goforward.10", label: "Forward 10 seconds") { model.skip(10) }
             Spacer()
-            controlButton("arrow.triangle.2.circlepath", label: "Play with VLC instead") { onUseVLC() }
             #if os(tvOS)
             trackButton("waveform", label: "Audio", panel: .audio,
                         enabled: model.audioTracks.filter { $0.id >= 0 }.count > 1)

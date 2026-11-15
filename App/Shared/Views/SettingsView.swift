@@ -7,7 +7,6 @@ import CasaPlayKit
 /// subtitles in this style.
 struct SettingsView: View {
     @Environment(AppState.self) private var app
-    @AppStorage(VideoEnginePreference.storageKey) private var videoEngine = VideoEnginePreference.standard
     #if os(tvOS)
     @AppStorage(ScreensaverSettings.key) private var screensaverMinutes = ScreensaverSettings.defaultMinutes
     #endif
@@ -44,18 +43,6 @@ struct SettingsView: View {
                     label: { $0.label },
                     selection: $state.subtitleStyle.position
                 )
-
-                VStack(alignment: .leading, spacing: Metrics.s(8)) {
-                    OptionRow(
-                        title: "Video engine for MKV and other files Apple's player can't open",
-                        options: VideoEnginePreference.allCases,
-                        label: { $0.label },
-                        selection: $videoEngine
-                    )
-                    Text(videoEngine.detail)
-                        .font(.casa(13))
-                        .foregroundStyle(Theme.textSecondary)
-                }
 
                 #if os(tvOS)
                 screensaverControls
