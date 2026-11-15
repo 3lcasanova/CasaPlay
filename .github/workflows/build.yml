@@ -44,6 +44,13 @@ jobs:
             scheme: CasaPlay-tvOS
             destination: generic/platform=tvOS Simulator
             spec: project-topshelf.yml
+          # The build the install scripts make for a real iPhone or iPad: Release, on the device SDK.
+          # Unsigned here, so it needs no certificate.
+          - name: CasaPlay-iOS-Release-Device
+            scheme: CasaPlay-iOS
+            destination: generic/platform=iOS
+            configuration: Release
+            spec: project.yml
     steps:
       - uses: actions/checkout@v4
       # The Aether engine needs the iOS / tvOS 26.2 SDK or newer, so use the newest Xcode on the runner
@@ -60,7 +67,7 @@ jobs:
       - name: Generate project
         run: xcodegen generate --spec ${{ matrix.spec }}
       - name: Upload generated Xcode project
-        if: matrix.scheme == 'CasaPlay-iOS'
+        if: matrix.name == 'CasaPlay-iOS'
         uses: actions/upload-artifact@v4
         with:
           name: CasaPlay-xcodeproj
@@ -74,7 +81,7 @@ jobs:
             -project CasaPlay.xcodeproj \
             -scheme "${{ matrix.scheme }}" \
             -destination "${{ matrix.destination }}" \
-            -configuration Debug \
+            -configuration "${{ matrix.configuration || 'Debug' }}" \
             ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
             | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
