@@ -26,7 +26,7 @@ jobs:
         run: swift test --filter LiveExtensionTests.testAVFoundationReadsRealFile
 
   app:
-    runs-on: macos-15
+    runs-on: ${{ matrix.runner || 'macos-15' }}
     strategy:
       fail-fast: false
       matrix:
@@ -51,6 +51,14 @@ jobs:
             destination: generic/platform=iOS
             configuration: Release
             spec: project.yml
+          # The same, on the newest macOS image and Xcode GitHub offers (closer to the Xcode on a Mac
+          # that is kept up to date).
+          - name: CasaPlay-iOS-Release-Device-NewestXcode
+            scheme: CasaPlay-iOS
+            destination: generic/platform=iOS
+            configuration: Release
+            spec: project.yml
+            runner: macos-26
     steps:
       - uses: actions/checkout@v4
       # The Aether engine needs the iOS / tvOS 26.2 SDK or newer, so use the newest Xcode on the runner
