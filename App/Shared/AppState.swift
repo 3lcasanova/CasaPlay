@@ -142,6 +142,8 @@ final class AppState {
     var selectedSection: AppSection = .home
     /// The poster wall that opens the app has played (or was skipped). It plays once per launch.
     var posterWallShown = false
+    /// Set by "Preview screen saver" in Settings (Apple TV). The screen saver clears it when it starts.
+    var screensaverRequested = false
     /// A film or show chosen outside the app, such as from the Apple TV Top Shelf. Home opens it, then clears this.
     var pendingTitle: PendingTitle?
     var playing: MediaItem?

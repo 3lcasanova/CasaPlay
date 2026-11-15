@@ -7,6 +7,9 @@ import CasaPlayKit
 /// subtitles in this style.
 struct SettingsView: View {
     @Environment(AppState.self) private var app
+    #if os(tvOS)
+    @AppStorage(ScreensaverSettings.key) private var screensaverMinutes = ScreensaverSettings.defaultMinutes
+    #endif
 
     var body: some View {
         @Bindable var state = app
@@ -41,6 +44,10 @@ struct SettingsView: View {
                     selection: $state.subtitleStyle.position
                 )
 
+                #if os(tvOS)
+                screensaverControls
+                #endif
+
                 VStack(alignment: .leading, spacing: Metrics.s(8)) {
                     Text("Delay")
                         .font(.casa(13, weight: .semibold))
@@ -68,6 +75,28 @@ struct SettingsView: View {
         .scrollingScreenTitle("Subtitles & playback")
     }
 }
+
+#if os(tvOS)
+extension SettingsView {
+    /// The Apple TV screen saver: newest movies and series that are streaming, after a quiet spell.
+    fileprivate var screensaverControls: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(8)) {
+            OptionRow(
+                title: "Screen saver of new movies and series starts after",
+                options: ScreensaverDelay.allCases,
+                label: { $0.label },
+                selection: Binding(
+                    get: { ScreensaverDelay(rawValue: screensaverMinutes) ?? .three },
+                    set: { screensaverMinutes = $0.rawValue }
+                )
+            )
+            ChipButton(title: "Preview screen saver", isSelected: false) {
+                app.screensaverRequested = true
+            }
+        }
+    }
+}
+#endif
 
 private struct SubtitlePreview: View {
     let style: SubtitleStyle

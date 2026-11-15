@@ -17,6 +17,9 @@ struct RootView: View {
 
         navigation
             .overlay { PosterWallHost() }
+            #if os(tvOS)
+            .overlay { ScreensaverHost() }
+            #endif
             .fullScreenCover(item: $state.playing) { item in
                 PlayerScreen(item: item)
             }

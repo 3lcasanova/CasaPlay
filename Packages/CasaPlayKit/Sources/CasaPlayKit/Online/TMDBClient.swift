@@ -141,6 +141,50 @@ public struct TMDBClient {
                       as: TMDBShowPage.self).results
     }
 
+    /// The newest films that stream in `region` (a subscription, free or with ads), newest release first,
+    /// from `since` up to `until`. The Apple TV screen saver shows these.
+    public func newestStreamingMovies(
+        region: String = "CA", since: Date, until: Date = Date(), page: Int = 1
+    ) async throws -> [TMDBMovie] {
+        try await get(path: "/discover/movie",
+                      params: Self.newestStreamingParams(region: region, since: since, until: until, page: page,
+                                                         sort: "primary_release_date.desc",
+                                                         dateKey: "primary_release_date", minVotes: 5),
+                      as: TMDBMoviePage.self).results
+    }
+
+    /// The newest shows that stream in `region`, by first air date, newest first.
+    public func newestStreamingTV(
+        region: String = "CA", since: Date, until: Date = Date(), page: Int = 1
+    ) async throws -> [TMDBShow] {
+        try await get(path: "/discover/tv",
+                      params: Self.newestStreamingParams(region: region, since: since, until: until, page: page,
+                                                         sort: "first_air_date.desc",
+                                                         dateKey: "first_air_date", minVotes: 3),
+                      as: TMDBShowPage.self).results
+    }
+
+    static func newestStreamingParams(
+        region: String, since: Date, until: Date, page: Int, sort: String, dateKey: String, minVotes: Int
+    ) -> [String: String] {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        let code = region.trimmingCharacters(in: .whitespaces)
+        return [
+            "sort_by": sort,
+            "include_adult": "false",
+            "vote_count.gte": "\(minVotes)",
+            // On a subscription service, free, or with ads: not merely for rent or sale.
+            "with_watch_monetization_types": "flatrate|free|ads",
+            "watch_region": code.count == 2 ? code.uppercased() : "US",
+            "\(dateKey).gte": formatter.string(from: since),
+            "\(dateKey).lte": formatter.string(from: until),
+            "page": "\(max(page, 1))"
+        ]
+    }
+
     static func regionParams(_ region: String?) -> [String: String] {
         guard let region = region?.trimmingCharacters(in: .whitespaces), region.count == 2 else { return [:] }
         return ["region": region.uppercased()]

@@ -223,4 +223,28 @@ final class TMDBBrowseTests: XCTestCase {
         XCTAssertNil(info.last_episode_to_air)
         XCTAssertNil(info.next_episode_to_air)
     }
+
+    func testNewestStreamingTitlesAreAskedForNewestFirstOnAStreamingService() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/discover/movie"] = HTTPResponse(status: 200, body: Data(#"{"results":[{"id":1,"title":"A"}]}"#.utf8))
+        transport.routes["/3/discover/tv"] = HTTPResponse(status: 200, body: Data(#"{"results":[{"id":2,"name":"B"}]}"#.utf8))
+        let client = makeClient(transport)
+        let since = Date(timeIntervalSince1970: 1_760_000_000)   // 2025-10-09
+        let until = Date(timeIntervalSince1970: 1_763_164_800)   // 2025-11-15
+
+        let films = try await client.newestStreamingMovies(region: "ca", since: since, until: until)
+        XCTAssertEqual(films.map(\.title), ["A"])
+        let sentFilm = query(transport.sent.first)
+        XCTAssertEqual(sentFilm["sort_by"], "primary_release_date.desc")
+        XCTAssertEqual(sentFilm["with_watch_monetization_types"], "flatrate|free|ads")
+        XCTAssertEqual(sentFilm["watch_region"], "CA")
+        XCTAssertEqual(sentFilm["primary_release_date.gte"], "2025-10-09")
+        XCTAssertEqual(sentFilm["primary_release_date.lte"], "2025-11-15")
+
+        let shows = try await client.newestStreamingTV(region: "CA", since: since, until: until)
+        XCTAssertEqual(shows.map(\.name), ["B"])
+        let sentShow = query(transport.sent.last)
+        XCTAssertEqual(sentShow["sort_by"], "first_air_date.desc")
+        XCTAssertEqual(sentShow["first_air_date.gte"], "2025-10-09")
+    }
 }
