@@ -8,7 +8,8 @@
 #
 # The link is tested first (it must answer with an add-on manifest) and is never printed.
 #
-#   PERSONAL_ADDON_URL='https://…/manifest.json' bash Scripts/setup-addon.sh
+#   Copy the add-on's install link ("Copy install link"), then:  bash Scripts/setup-addon.sh
+#   Or give it directly:  PERSONAL_ADDON_URL='https://…/manifest.json' bash Scripts/setup-addon.sh
 
 cd "$(dirname "$0")/.." || exit 1
 FILE="Config/Secrets.xcconfig"
@@ -19,9 +20,14 @@ if ! grep -qx 'Config/Secrets.xcconfig' .gitignore 2>/dev/null; then
 fi
 
 link="$(printf '%s' "${PERSONAL_ADDON_URL:-}" | tr -d '[:space:]')"
+# No link given on the command line: use the one just copied ("Copy install link"), so it never
+# has to be typed or pasted anywhere else.
+if [ -z "$link" ] && command -v pbpaste >/dev/null 2>&1; then
+  link="$(pbpaste | tr -d '[:space:]')"
+fi
 if [ -z "$link" ]; then
-  echo "✗ No link given. Run it like this:"
-  echo "  PERSONAL_ADDON_URL='https://…/manifest.json' bash Scripts/setup-addon.sh"
+  echo "✗ No link found. Copy the add-on's install link, then run:"
+  echo "  bash Scripts/setup-addon.sh"
   exit 1
 fi
 
