@@ -303,6 +303,8 @@ struct EpisodeInfo: Identifiable {
     var overview: String?
     var runtimeMinutes: Int?
     var imageURL: URL?
+    /// "2026-11-13", when the source knows it.
+    var airDate: String?
 
     init(tmdb episode: TMDBEpisode) {
         season = episode.season_number
@@ -311,6 +313,7 @@ struct EpisodeInfo: Identifiable {
         overview = episode.overview
         runtimeMinutes = episode.runtime
         imageURL = episode.still_path.flatMap { TMDBClient.backdropURL($0) }
+        airDate = episode.air_date
     }
 
     init(tvdb episode: TVDBEpisode) {

@@ -1,7 +1,8 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// A title's page. A full-bleed hero with the title, scores, synopsis and the action buttons right on the
-// image, then frosted panels for how it plays, subtitles and the cast.
+// A title's page, laid out like the Apple TV app's. A full-bleed hero with the title, synopsis and the
+// buttons; scrolling melts the picture into a blurred colour wash, with the episodes, related titles, cast,
+// how to watch, About, Information, Languages and Accessibility below.
 
 import SwiftUI
 import CasaPlayKit
@@ -27,6 +28,14 @@ private struct DetailContent: View {
     /// Titles viewers of this one also watch, and the title opened from that shelf.
     @State private var related: [DiscoverTitle] = []
     @State private var pushedID: UUID?
+    /// The season shown in the episode shelf, its episodes, and the episode being opened for streams.
+    @State private var selectedSeason = 1
+    @State private var episodes: [EpisodeInfo] = []
+    @State private var streamingEpisode: EpisodeStreamTarget?
+    #if os(tvOS)
+    /// How far the page has scrolled, for the picture to melt into the colour wash.
+    @State private var scrollOffset: CGFloat = 0
+    #endif
     #if !os(tvOS)
     @Environment(\.horizontalSizeClass) private var sizeClass
     #endif
@@ -45,14 +54,6 @@ private struct DetailContent: View {
 
     private var isPlayableTitle: Bool { !needsStream && !needsEpisode }
 
-    private var heroHeight: CGFloat {
-        #if os(tvOS)
-        return 800
-        #else
-        return sizeClass == .regular ? 460 : 300
-        #endif
-    }
-
     var body: some View {
         let decision = app.router.decide(for: item.file)
 
@@ -69,13 +70,19 @@ private struct DetailContent: View {
                     }
                 }
             }
+            #endif
             .navigationDestination(item: $pushedID) { id in
                 DetailView(itemID: id)
             }
             .task(id: item.id) {
                 related = await app.relatedTitles(for: item)
             }
-            #endif
+            .task(id: EpisodeLoadKey(id: item.id, season: selectedSeason)) {
+                await loadEpisodes()
+            }
+            .adaptiveSheet(item: $streamingEpisode) { target in
+                StreamSourcesView(request: target.request, libraryItemID: target.episodeID)
+            }
             .adaptiveSheet(isPresented: $showingStreams) {
                 if let request = movieRequest {
                     StreamSourcesView(request: request, libraryItemID: item.id)
@@ -103,110 +110,150 @@ private struct DetailContent: View {
         #endif
     }
 
-    /// Apple TV: the text sits on the picture, left aligned, with the focusable buttons under it.
+    #if os(tvOS)
+
+    /// Apple TV: one fixed picture behind the page. It starts sharp, with the text on it, and melts into a
+    /// blurred colour wash as the page scrolls up over it, with the title pinned at the top.
     private func tvContent(_ decision: PlaybackDecision) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
-                hero(decision)
-
-                if isPlayableTitle {
-                    playbackCard(decision)
+        ZStack(alignment: .top) {
+            tvBackdrop
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    tvHero(decision)
+                    lowerSections(decision)
                 }
-                if !item.cast.isEmpty {
-                    castRow
-                }
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(key: DetailScrollKey.self,
+                                               value: -proxy.frame(in: .named("detailScroll")).minY)
+                    }
+                )
             }
-            .padding(.bottom, Metrics.sectionSpacing)
+            .coordinateSpace(name: "detailScroll")
+            .onPreferenceChange(DetailScrollKey.self) { value in
+                // In steps, so the page isn't redrawn for every pixel it scrolls.
+                let step = (value / 12).rounded() * 12
+                if step != scrollOffset { scrollOffset = step }
+            }
+
+            tvPinnedTitle
         }
     }
 
-    // MARK: Hero
-
-    /// On Apple TV the text sits on the image. On iPhone and iPad it starts at the bottom edge of the
-    /// image and runs below it, where there is more room.
-    private func hero(_ decision: PlaybackDecision) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ZStack(alignment: .bottomLeading) {
-                BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue, alignment: .top)
-                // Dark from the left for the text, and into the page colour at the bottom.
-                LinearGradient(colors: [Theme.background.opacity(0.9), Theme.background.opacity(0.45), Color.clear],
-                               startPoint: .leading, endPoint: .trailing)
-                    .opacity(Platform.isTV ? 1 : 0)
-                LinearGradient(colors: [Color.clear, Theme.background.opacity(0.7), Theme.background],
-                               startPoint: UnitPoint(x: 0.5, y: Platform.isTV ? 0.4 : 0.5), endPoint: .bottom)
-                if Platform.isTV {
-                    heroText(decision)
-                        .padding(.horizontal, Metrics.screenPadding)
-                        .padding(.bottom, Metrics.s(14))
-                }
-            }
-            .frame(height: heroHeight)
-            .clipped()
-
-            if !Platform.isTV {
-                heroText(decision)
-                    .padding(.horizontal, Metrics.screenPadding)
-                    .padding(.top, -Metrics.s(46))
-            }
-        }
+    /// 0 while the hero is showing, 1 once the page has scrolled up over it.
+    private var washProgress: Double {
+        min(max(Double(scrollOffset - 160) / 420, 0), 1)
     }
 
-    private func heroText(_ decision: PlaybackDecision) -> some View {
-        VStack(alignment: .leading, spacing: Metrics.s(10)) {
-            Text(item.tmdbShowID != nil ? "SERIES" : "MOVIE")
-                .font(.casa(11, weight: .heavy))
-                .tracking(Platform.isTV ? 5 : 2.5)
-                .foregroundStyle(Theme.accent)
+    private var tvBackdrop: some View {
+        ZStack {
+            ZStack {
+                BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue,
+                              fullSize: true, alignment: .top)
+                LinearGradient(colors: [Color.black.opacity(0.78), Color.black.opacity(0.3), Color.clear],
+                               startPoint: .leading, endPoint: UnitPoint(x: 0.7, y: 0.5))
+                LinearGradient(colors: [Color.clear, Color.black.opacity(0.7)],
+                               startPoint: UnitPoint(x: 0.5, y: 0.45), endPoint: .bottom)
+            }
+            .opacity(1 - washProgress)
 
+            ZStack {
+                BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue)
+                    .scaleEffect(1.3)
+                    .blur(radius: 70)
+                    .saturation(1.6)
+                Color.black.opacity(0.32)
+                LinearGradient(colors: [Color.clear, Color.black.opacity(0.5)], startPoint: .top, endPoint: .bottom)
+            }
+            .opacity(washProgress)
+        }
+        .clipped()
+        .ignoresSafeArea()
+    }
+
+    private var tvPinnedTitle: some View {
+        Text(item.title)
+            .font(.system(size: 58, weight: .heavy))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
+            .shadow(color: .black.opacity(0.5), radius: 12, y: 4)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 220)
+            .padding(.top, 30)
+            .opacity(washProgress)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    /// The text sits bottom left on the picture and "Starring" bottom right. The first shelf peeks in under it.
+    private func tvHero(_ decision: PlaybackDecision) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            tvHeroText(decision)
+                .padding(.leading, Metrics.screenPadding)
+                .padding(.bottom, 22)
+            if !item.cast.isEmpty {
+                Text("Starring " + item.cast.prefix(3).map(\.name).joined(separator: ", "))
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(Color.white.opacity(0.85))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 360, alignment: .trailing)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(.trailing, Metrics.screenPadding)
+                    .padding(.bottom, 40)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 840)
+    }
+
+    private func tvHeroText(_ decision: PlaybackDecision) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
             Text(item.title)
-                .font(.system(size: Platform.isTV ? 76 : 32, weight: .heavy))
+                .font(.system(size: 86, weight: .heavy))
                 .foregroundStyle(.white)
                 .lineLimit(2)
                 .minimumScaleFactor(0.6)
                 .shadow(color: .black.opacity(0.55), radius: 14, y: 4)
 
-            metaRow
-
-            if !item.genres.isEmpty {
-                Text(item.genres.joined(separator: "  ·  "))
-                    .font(.casa(13, weight: .medium))
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(1)
-            }
+            Text(tvKindLine)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.9))
+                .lineLimit(1)
 
             if !item.overview.isEmpty {
                 Text(item.overview)
-                    .font(.casa(14))
-                    .foregroundStyle(Color.white.opacity(0.86))
-                    .lineLimit(Platform.isTV ? 3 : 4)
-                    .frame(maxWidth: Platform.isTV ? 860 : .infinity, alignment: .leading)
-                    .padding(.top, Metrics.s(2))
+                    .font(.system(size: 24))
+                    .foregroundStyle(Color.white.opacity(0.88))
+                    .lineLimit(3)
+                    .frame(maxWidth: 820, alignment: .leading)
             }
 
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: Metrics.s(10)) { actionButtons(decision) }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: Metrics.s(10)) { actionButtons(decision) }
-                        .padding(.vertical, 4)
-                }
-            }
-            .padding(.top, Metrics.s(8))
+            metaRow
 
-            subtitleRow
+            HStack(spacing: 16) { actionButtons(decision) }
+                .padding(.top, 6)
 
             if item.canResume && isPlayableTitle {
-                HStack(spacing: Metrics.s(10)) {
+                HStack(spacing: 16) {
                     ProgressBar(fraction: item.progressFraction)
-                        .frame(width: Metrics.s(150))
+                        .frame(width: 240)
                         .clipShape(Capsule())
                     Text(TimeFormat.timeLeft(item.remainingSeconds))
-                        .font(.casa(12))
-                        .foregroundStyle(Color.white.opacity(0.8))
+                        .font(.system(size: 20))
+                        .foregroundStyle(Color.white.opacity(0.85))
                 }
             }
         }
-        .frame(maxWidth: Platform.isTV ? 1000 : .infinity, alignment: .leading)
+        .frame(maxWidth: 1000, alignment: .leading)
     }
+
+    private var tvKindLine: String {
+        ([item.tmdbShowID != nil ? "TV Show" : "Movie"] + item.genres.prefix(3)).joined(separator: " · ")
+    }
+
+    #endif
 
     /// Subtitles are always here on the page: Off and each loaded track. English is found and switched on
     /// by itself when the page opens.
@@ -249,6 +296,8 @@ private struct DetailContent: View {
         }
     }
 
+    #if os(tvOS)
+
     private var metaParts: [String] {
         var parts: [String] = []
         if let year = item.year { parts.append(String(year)) }
@@ -284,6 +333,8 @@ private struct DetailContent: View {
         }
     }
 
+    #endif
+
     // MARK: iPhone and iPad
 
     #if !os(tvOS)
@@ -300,14 +351,7 @@ private struct DetailContent: View {
                 VStack(alignment: .leading, spacing: 30) {
                     phoneHeader(decision)
 
-                    relatedShelf
-
-                    if isPlayableTitle {
-                        playbackCard(decision)
-                    }
-                    if !item.cast.isEmpty {
-                        castRow
-                    }
+                    lowerSections(decision)
                 }
                 .frame(maxWidth: isWide ? 720 : .infinity)
                 .padding(.top, isWide ? -230 : -250)
@@ -512,40 +556,11 @@ private struct DetailContent: View {
         }
     }
 
-    // MARK: Related
-
-    @ViewBuilder
-    private var relatedShelf: some View {
-        if !related.isEmpty {
-            Shelf(title: "Related") {
-                ForEach(related) { title in
-                    Button {
-                        openRelated(title)
-                    } label: {
-                        ApplePosterCard(title: title.title, posterPath: title.posterPath)
-                    }
-                    .posterButtonStyle()
-                }
-            }
-        }
-    }
-
-    private func openRelated(_ title: DiscoverTitle) {
-        Task { @MainActor in
-            let opened: UUID?
-            if title.isShow {
-                opened = try? await app.openShow(tmdbID: title.tmdbID)
-            } else {
-                opened = try? await app.openMovie(tmdbID: title.tmdbID)
-            }
-            if let opened { pushedID = opened }
-        }
-    }
-
     #endif
 
-    // MARK: Actions
+    // MARK: Actions (Apple TV)
 
+    #if os(tvOS)
     @ViewBuilder
     private func actionButtons(_ decision: PlaybackDecision) -> some View {
         if needsEpisode {
@@ -576,16 +591,33 @@ private struct DetailContent: View {
             }
             .buttonStyle(HeroButtonStyle(kind: .primary))
             .disabled(!decision.isPlayable)
+        }
 
-            if movieRequest != nil {
-                Button {
-                    showingStreams = true
-                } label: {
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                }
-                .buttonStyle(HeroButtonStyle(kind: .icon))
-                .accessibilityLabel("Find other streams")
+        if item.tmdbShowID != nil && !needsEpisode {
+            Button {
+                showingEpisodes = true
+            } label: {
+                Text("All Episodes")
             }
+            .buttonStyle(HeroButtonStyle(kind: .secondary))
+        }
+
+        Button {
+            app.toggleFavorite(item.id)
+        } label: {
+            Image(systemName: item.isFavorite ? "checkmark" : "plus")
+        }
+        .buttonStyle(HeroButtonStyle(kind: .icon))
+        .accessibilityLabel(item.isFavorite ? "Remove from favorites" : "Add to favorites")
+
+        if movieRequest != nil && !needsStream {
+            Button {
+                showingStreams = true
+            } label: {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+            }
+            .buttonStyle(HeroButtonStyle(kind: .icon))
+            .accessibilityLabel("Find other streams")
         }
 
         if item.canResume && isPlayableTitle {
@@ -600,102 +632,324 @@ private struct DetailContent: View {
         }
 
         Button {
-            app.toggleFavorite(item.id)
-        } label: {
-            Image(systemName: item.isFavorite ? "heart.fill" : "heart")
-        }
-        .buttonStyle(HeroButtonStyle(kind: .icon))
-        .accessibilityLabel(item.isFavorite ? "Remove from favorites" : "Add to favorites")
-
-        Button {
             app.toggleWatched(item.id)
         } label: {
             Image(systemName: item.isWatched ? "checkmark.circle.fill" : "checkmark.circle")
         }
         .buttonStyle(HeroButtonStyle(kind: .icon))
         .accessibilityLabel(item.isWatched ? "Mark as unwatched" : "Mark as watched")
+    }
+    #endif
 
-        if item.tmdbShowID != nil && !needsEpisode {
-            Button {
-                showingEpisodes = true
-            } label: {
-                Label("Episodes", systemImage: "list.bullet")
-            }
-            .buttonStyle(HeroButtonStyle(kind: .secondary))
-        }
+    // MARK: Related
 
-        #if !os(tvOS)
-        if let url = item.imdbURL {
-            Link(destination: url) {
-                Text("IMDb")
-                    .font(.casa(13, weight: .heavy))
+    @ViewBuilder
+    private var relatedShelf: some View {
+        if !related.isEmpty {
+            Shelf(title: "Related") {
+                ForEach(related) { title in
+                    Button {
+                        openRelated(title)
+                    } label: {
+                        ApplePosterCard(title: title.title, posterPath: title.posterPath)
+                    }
+                    .posterButtonStyle()
+                }
             }
-            .buttonStyle(HeroButtonStyle(kind: .secondary))
-            .accessibilityLabel("Open on IMDb")
         }
-        #endif
+    }
+
+    private func openRelated(_ title: DiscoverTitle) {
+        Task { @MainActor in
+            let opened: UUID?
+            if title.isShow {
+                opened = try? await app.openShow(tmdbID: title.tmdbID)
+            } else {
+                opened = try? await app.openMovie(tmdbID: title.tmdbID)
+            }
+            if let opened { pushedID = opened }
+        }
+    }
+
+    // MARK: Under the hero (every platform)
+
+    /// Episodes, related titles, cast, how to watch, About and the details, as in the Apple TV app.
+    private func lowerSections(_ decision: PlaybackDecision) -> some View {
+        VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
+            episodesSection
+            relatedShelf
+            if !item.cast.isEmpty { castRow }
+            if isPlayableTitle { howToWatch(decision) }
+            aboutAndDetails
+        }
+        .padding(.top, Platform.isTV ? 12 : 0)
+        .padding(.bottom, Metrics.sectionSpacing)
+    }
+
+    // MARK: Episodes
+
+    @ViewBuilder
+    private var episodesSection: some View {
+        if item.tmdbShowID != nil, app.tmdbClient != nil {
+            VStack(alignment: .leading, spacing: Metrics.s(6)) {
+                if episodeSeasonCount > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: Metrics.s(8)) {
+                            ForEach(1...episodeSeasonCount, id: \.self) { number in
+                                ChipButton(title: "Season \(number)", isSelected: selectedSeason == number) {
+                                    selectedSeason = number
+                                }
+                            }
+                        }
+                        .padding(.horizontal, AppleMetrics.edge)
+                        .padding(.vertical, Platform.isTV ? 14 : 2)
+                    }
+                }
+                if !episodes.isEmpty {
+                    Shelf(title: "Season \(selectedSeason)") {
+                        ForEach(episodes) { episode in
+                            Button {
+                                streamEpisode(episode)
+                            } label: {
+                                EpisodeCard(episode: episode)
+                            }
+                            .buttonStyle(FlatCardButtonStyle())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadEpisodes() async {
+        guard let showID = item.tmdbShowID, let tmdb = app.tmdbClient else {
+            episodes = []
+            return
+        }
+        let season = selectedSeason
+        do {
+            let detail = try await tmdb.seasonDetail(showID: showID, season: season)
+            guard !Task.isCancelled else { return }
+            episodes = (detail.episodes ?? []).map(EpisodeInfo.init(tmdb:))
+        } catch {
+            guard !Task.isCancelled else { return }
+            episodes = []
+        }
+    }
+
+    /// Opens the streams for one episode, the same way the full episode list does.
+    private func streamEpisode(_ episode: EpisodeInfo) {
+        guard let seriesID = item.imdbID, !seriesID.isEmpty else {
+            showingEpisodes = true
+            return
+        }
+        let request = ContentRequest.episode(
+            seriesID: seriesID,
+            title: item.title,
+            season: episode.season,
+            episode: episode.number,
+            year: item.year
+        )
+        let episodeID = app.registerEpisode(show: item, season: episode.season,
+                                            episode: episode.number, runtimeMinutes: episode.runtimeMinutes)
+        streamingEpisode = EpisodeStreamTarget(request: request, episodeID: episodeID)
     }
 
     private var episodeSeasonCount: Int { item.numberOfSeasons ?? 1 }
 
-    // MARK: How it plays
+    // MARK: How to Watch
 
-    private func playbackCard(_ decision: PlaybackDecision) -> some View {
-        VStack(alignment: .leading, spacing: Metrics.s(14)) {
-            DetailSectionTitle(title: "How it plays")
+    private func howToWatch(_ decision: PlaybackDecision) -> some View {
+        VStack(alignment: .leading, spacing: Metrics.s(8)) {
+            ShelfTitle(title: "How to Watch")
+            VStack(alignment: .leading, spacing: Metrics.s(6)) {
+                HStack(spacing: Metrics.s(12)) {
+                    Image(systemName: decision.isPlayable ? "play.rectangle.fill" : "exclamationmark.triangle.fill")
+                        .font(.casa(24))
+                        .foregroundStyle(decision.isPlayable ? Theme.accent : Color.orange)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(decision.isPlayable ? "Watch on CasaPlay" : "Can't play on this device")
+                            .font(.casa(15, weight: .semibold))
+                            .foregroundStyle(Theme.textPrimary)
+                        Text(decision.badgeText)
+                            .font(.casa(12))
+                            .foregroundStyle(Theme.textSecondary)
+                    }
+                }
+                ForEach(decision.reasons, id: \.self) { reason in
+                    Text("Apple's player can't open: \(reason)")
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+                ForEach(decision.notes, id: \.self) { note in
+                    Text(note)
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .padding(Metrics.s(14))
+            .frame(maxWidth: Platform.isTV ? 760 : .infinity, alignment: .leading)
+            .modifier(FocusGlass())
+            .focusableOnTV()
+        }
+        .padding(.horizontal, AppleMetrics.edge)
+    }
 
-            HStack(spacing: Metrics.s(8)) {
-                Image(systemName: decision.isPlayable ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(decision.isPlayable ? Color(red: 0.36, green: 0.86, blue: 0.48) : Color.orange)
-                Text(decision.badgeText)
-                    .font(.casa(15, weight: .semibold))
+    // MARK: About, Information, Languages, Accessibility
+
+    private var aboutAndDetails: some View {
+        VStack(alignment: .leading, spacing: Metrics.sectionSpacing) {
+            aboutPanel
+            detailsColumns
+        }
+        .padding(.horizontal, AppleMetrics.edge)
+    }
+
+    private func sectionHeading(_ title: String) -> some View {
+        Text(title)
+            .font(.casa(17, weight: .bold))
+            .foregroundStyle(Theme.textPrimary)
+    }
+
+    private func labelled(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.casa(11))
+                .foregroundStyle(Theme.textSecondary)
+            Text(value)
+                .font(.casa(13, weight: .semibold))
+                .foregroundStyle(Theme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var aboutPanel: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(8)) {
+            sectionHeading("About")
+            VStack(alignment: .leading, spacing: Metrics.s(6)) {
+                Text(item.title)
+                    .font(.casa(15, weight: .bold))
                     .foregroundStyle(Theme.textPrimary)
-            }
-
-            ForEach(decision.reasons, id: \.self) { reason in
-                Text("Apple's player can't open: \(reason)")
-                    .font(.casa(12))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-            ForEach(decision.notes, id: \.self) { note in
-                Text(note)
-                    .font(.casa(12))
-                    .foregroundStyle(Theme.textSecondary)
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: Platform.isTV ? 300 : 150), spacing: Metrics.s(10), alignment: .top)],
-                      alignment: .leading, spacing: Metrics.s(10)) {
-                SpecTile(symbol: "shippingbox.fill", label: "Container", value: item.file.container.displayName)
-                SpecTile(symbol: "film.fill", label: "Video",
-                         value: "\(item.file.videoCodec.displayName) · \(item.file.width)×\(item.file.height)")
-                SpecTile(symbol: "waveform", label: "Audio",
-                         value: item.file.audioCodecs.isEmpty
-                            ? "None"
-                            : item.file.audioCodecs.map { $0.displayName }.joined(separator: ", "))
-                SpecTile(symbol: "captions.bubble.fill", label: "Subtitles",
-                         value: item.file.subtitleFormats.isEmpty
-                            ? "None"
-                            : item.file.subtitleFormats.map { $0.rawValue.uppercased() }.joined(separator: ", "))
-                if let size = item.file.sizeBytes {
-                    SpecTile(symbol: "internaldrive.fill", label: "Size",
-                             value: ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
+                if !item.genres.isEmpty {
+                    Text(item.genres.joined(separator: ", "))
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.textSecondary)
                 }
-                if !item.sourceName.isEmpty {
-                    SpecTile(symbol: "antenna.radiowaves.left.and.right", label: "Source", value: item.sourceName)
+                if !item.overview.isEmpty {
+                    Text(item.overview)
+                        .font(.casa(13))
+                        .foregroundStyle(Color.white.opacity(0.9))
+                        .lineLimit(Platform.isTV ? 6 : 10)
                 }
+            }
+            .padding(Metrics.s(14))
+            .frame(maxWidth: Platform.isTV ? 760 : .infinity, alignment: .leading)
+            .modifier(FocusGlass())
+            .focusableOnTV()
+        }
+    }
+
+    @ViewBuilder
+    private var detailsColumns: some View {
+        #if os(tvOS)
+        HStack(alignment: .top, spacing: 48) {
+            informationColumn.frame(width: 440, alignment: .leading)
+            languagesColumn.frame(maxWidth: 700, alignment: .leading)
+            accessibilityColumn.frame(width: 480, alignment: .leading)
+        }
+        #else
+        VStack(alignment: .leading, spacing: 22) {
+            informationColumn
+            languagesColumn
+            accessibilityColumn
+        }
+        #endif
+    }
+
+    private var informationRows: [(label: String, value: String)] {
+        var rows: [(label: String, value: String)] = []
+        if let year = item.year { rows.append(("Released", String(year))) }
+        if item.tmdbShowID != nil {
+            if let seasons = item.numberOfSeasons { rows.append(("Seasons", String(seasons))) }
+        } else if item.runtimeSeconds > 0 {
+            rows.append(("Runtime", TimeFormat.runtime(item.runtimeSeconds)))
+        }
+        if let rating = item.rating, !rating.isEmpty { rows.append(("Rated", rating)) }
+        if isPlayableTitle {
+            rows.append(("Container", item.file.container.displayName))
+            rows.append(("Video", "\(item.file.videoCodec.displayName) · \(item.file.width)×\(item.file.height)"))
+            if let size = item.file.sizeBytes {
+                rows.append(("Size", ByteCountFormatter.string(fromByteCount: size, countStyle: .file)))
             }
         }
-        .padding(Metrics.s(18))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassCard()
-        .padding(.horizontal, Metrics.screenPadding)
-        .focusableOnTV()
+        if !item.sourceName.isEmpty { rows.append(("Source", item.sourceName)) }
+        return rows
+    }
+
+    private var informationColumn: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(8)) {
+            sectionHeading("Information")
+            VStack(alignment: .leading, spacing: Metrics.s(10)) {
+                ForEach(Array(informationRows.enumerated()), id: \.offset) { _, row in
+                    labelled(row.label, row.value)
+                }
+            }
+            .padding(Metrics.s(14))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .modifier(FocusGlass())
+            .focusableOnTV()
+        }
+    }
+
+    private var languagesColumn: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(8)) {
+            sectionHeading("Languages")
+            if isPlayableTitle {
+                labelled("Audio", item.file.audioCodecs.isEmpty
+                         ? "None"
+                         : item.file.audioCodecs.map { $0.displayName }.joined(separator: ", "))
+            }
+            #if os(tvOS)
+            Text("Subtitles")
+                .font(.casa(11))
+                .foregroundStyle(Theme.textSecondary)
+            subtitleRow
+            #endif
+            if isPlayableTitle, !item.file.subtitleFormats.isEmpty {
+                labelled("In the file",
+                         item.file.subtitleFormats.map { $0.rawValue.uppercased() }.joined(separator: ", "))
+            }
+        }
+    }
+
+    private var accessibilityColumn: some View {
+        let hasSubtitles = !app.subtitleOptions(for: item.id).isEmpty || !item.file.subtitleFormats.isEmpty
+        return VStack(alignment: .leading, spacing: Metrics.s(8)) {
+            sectionHeading("Accessibility")
+            HStack(alignment: .top, spacing: Metrics.s(10)) {
+                Text("CC")
+                    .font(.casa(10, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.9))
+                    .padding(.horizontal, Metrics.s(5))
+                    .padding(.vertical, Metrics.s(1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: Metrics.s(4), style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.6), lineWidth: 1)
+                    )
+                Text(hasSubtitles
+                     ? "Closed captions and subtitles are available for this title."
+                     : "No subtitles found for this title yet.")
+                    .font(.casa(12))
+                    .foregroundStyle(Theme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     // MARK: Cast
 
     private var castRow: some View {
-        Shelf(title: "Cast") {
+        Shelf(title: "Cast & Crew") {
             ForEach(Array(item.cast.enumerated()), id: \.element.id) { index, member in
                 CastTile(member: member,
                          hue: (item.artHue + Double(index) * 37).truncatingRemainder(dividingBy: 360))
@@ -706,22 +960,6 @@ private struct DetailContent: View {
 }
 
 // MARK: - Pieces
-
-/// A section heading with a short amber bar in front of it.
-private struct DetailSectionTitle: View {
-    let title: String
-
-    var body: some View {
-        HStack(spacing: Metrics.s(10)) {
-            Capsule()
-                .fill(Theme.accent)
-                .frame(width: Metrics.s(4), height: Metrics.s(20))
-            Text(title)
-                .font(.casa(20, weight: .bold))
-                .foregroundStyle(Theme.textPrimary)
-        }
-    }
-}
 
 /// TMDB score as a star rating and a percentage.
 private struct ScoreStrip: View {
@@ -749,44 +987,13 @@ private struct ScoreStrip: View {
     }
 }
 
-/// One fact about the file: an icon, what it is and its value.
-private struct SpecTile: View {
-    let symbol: String
-    let label: String
-    let value: String
-
-    var body: some View {
-        HStack(spacing: Metrics.s(12)) {
-            Image(systemName: symbol)
-                .font(.casa(16, weight: .semibold))
-                .foregroundStyle(Theme.accent)
-                .frame(width: Metrics.s(38), height: Metrics.s(38))
-                .background(Theme.accent.opacity(0.14), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label.uppercased())
-                    .font(.casa(10, weight: .bold))
-                    .tracking(Platform.isTV ? 2 : 1)
-                    .foregroundStyle(Theme.textSecondary)
-                Text(value)
-                    .font(.casa(13, weight: .semibold))
-                    .foregroundStyle(Theme.textPrimary)
-                    .lineLimit(2)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(Metrics.s(10))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: Metrics.s(12), style: .continuous))
-    }
-}
-
 /// A cast member: round portrait with the name and role. On Apple TV the focused one grows a white ring.
 private struct CastTile: View {
     let member: CastMember
     let hue: Double
     @Environment(\.isFocused) private var isFocused
 
-    private var size: CGFloat { Platform.isTV ? 132 : 84 }
+    private var size: CGFloat { Platform.isTV ? 150 : 84 }
 
     var body: some View {
         VStack(spacing: Metrics.s(8)) {
@@ -819,7 +1026,132 @@ private struct CastTile: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(width: Platform.isTV ? 190 : 104)
+        .frame(width: Platform.isTV ? 210 : 104)
+        .animation(.easeOut(duration: 0.15), value: isFocused)
+    }
+}
+
+// MARK: - Episode shelf pieces
+
+/// Where the page has scrolled to (Apple TV), so the picture can melt into the colour wash.
+private struct DetailScrollKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+}
+
+/// Reloads the episode shelf when the show or the season changes.
+private struct EpisodeLoadKey: Equatable {
+    let id: UUID
+    let season: Int
+}
+
+/// The episode picked on the page, waiting for its list of streams.
+private struct EpisodeStreamTarget: Identifiable {
+    let id = UUID()
+    let request: ContentRequest
+    let episodeID: UUID
+}
+
+/// A card that draws nothing of its own: the label shows its own focus.
+private struct FlatCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.8 : 1)
+    }
+}
+
+/// A frosted panel that turns lighter and lifts a little while it has focus on Apple TV.
+private struct FocusGlass: ViewModifier {
+    @Environment(\.isFocused) private var isFocused
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: Metrics.s(14), style: .continuous)
+                    .fill(Color.white.opacity(isFocused ? 0.28 : 0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Metrics.s(14), style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+            )
+            .scaleEffect(isFocused ? 1.03 : 1)
+            .animation(.easeOut(duration: 0.15), value: isFocused)
+    }
+}
+
+/// One episode: the still, "EPISODE 3", the title, a short summary and the air date. The focused one
+/// sits on a light glass card.
+private struct EpisodeCard: View {
+    let episode: EpisodeInfo
+    @Environment(\.isFocused) private var isFocused
+
+    private var width: CGFloat { Metrics.landscapeWidth }
+
+    private static let parser: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    private var airDateText: String? {
+        guard let raw = episode.airDate, raw.count >= 10,
+              let date = Self.parser.date(from: String(raw.prefix(10))) else { return nil }
+        return date.formatted(date: .abbreviated, time: .omitted)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Metrics.s(6)) {
+            CachedAsyncImage(url: episode.imageURL) { phase in
+                if let image = phase.image {
+                    image.resizable().scaledToFill()
+                } else {
+                    Color.white.opacity(0.08)
+                }
+            }
+            .frame(width: width, height: width * 9 / 16)
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.cornerRadius, style: .continuous))
+            .overlay(alignment: .bottomLeading) {
+                if let minutes = episode.runtimeMinutes, minutes > 0 {
+                    Text("\(minutes) min")
+                        .font(.casa(10, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, Metrics.s(6))
+                        .padding(.vertical, Metrics.s(2))
+                        .background(Color.black.opacity(0.55), in: Capsule())
+                        .padding(Metrics.s(6))
+                }
+            }
+
+            VStack(alignment: .leading, spacing: Metrics.s(2)) {
+                Text("EPISODE \(episode.number)")
+                    .font(.casa(9, weight: .bold))
+                    .tracking(Platform.isTV ? 2 : 1)
+                    .foregroundStyle(Theme.textSecondary)
+                Text(episode.name)
+                    .font(.casa(13, weight: .semibold))
+                    .foregroundStyle(Theme.textPrimary)
+                    .lineLimit(2)
+                if let overview = episode.overview, !overview.isEmpty {
+                    Text(overview)
+                        .font(.casa(11))
+                        .foregroundStyle(Theme.textSecondary)
+                        .lineLimit(Platform.isTV ? 3 : 2)
+                }
+                if let airDateText {
+                    Text(airDateText)
+                        .font(.casa(11))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
+            .multilineTextAlignment(.leading)
+            .frame(width: width, height: Metrics.s(Platform.isTV ? 104 : 96), alignment: .topLeading)
+        }
+        .padding(Metrics.s(8))
+        .background(
+            RoundedRectangle(cornerRadius: Metrics.s(14), style: .continuous)
+                .fill(Color.white.opacity(isFocused ? 0.26 : 0))
+        )
+        .scaleEffect(isFocused ? 1.04 : 1)
         .animation(.easeOut(duration: 0.15), value: isFocused)
     }
 }
