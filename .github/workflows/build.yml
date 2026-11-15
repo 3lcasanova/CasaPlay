@@ -46,6 +46,15 @@ jobs:
             spec: project-topshelf.yml
     steps:
       - uses: actions/checkout@v4
+      # The Aether engine needs the iOS / tvOS 26.2 SDK or newer, so use the newest Xcode on the runner
+      # (not a beta).
+      - name: Use the newest Xcode
+        run: |
+          ls -d /Applications/Xcode*.app
+          newest=$(ls -d /Applications/Xcode_[0-9]*.app | grep -vi beta | sort -V | tail -1)
+          echo "Using $newest"
+          sudo xcode-select -s "$newest"
+          xcodebuild -version
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate project
