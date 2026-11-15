@@ -33,6 +33,7 @@ final class ExtensionCenter {
         manager = ExtensionManager(file: file, secrets: KeychainSecretStore())
         Task {
             await reload()
+            await removeRetiredStarterAddons()
             await installStarterAddons()
             await installPersonalAddons()
         }
@@ -46,15 +47,25 @@ final class ExtensionCenter {
     // MARK: - Starter add-ons
 
     /// Add-ons that come installed. Each is installed once; removing one in the app keeps it removed.
-    /// - WatchHub: Stremio's own add-on listing the legal services (Netflix, Prime Video,
-    ///   Apple TV and others) a title can be watched on.
-    /// - Public Domain Movies: torrents for about 500 films that are in the public domain.
     /// - OpenSubtitles v3: Stremio's subtitles add-on.
     private static let starterAddons: [(id: String, manifest: String, role: ProviderRole)] = [
-        ("org.stremio.pubdomainmovies", "https://caching.stremio.net/publicdomainmovies.now.sh/manifest.json", .primary),
-        ("org.stremio.watchhub", "https://watchhub.strem.io/manifest.json", .backup),
         ("org.stremio.opensubtitlesv3", "https://opensubtitles-v3.strem.io/manifest.json", .backup),
     ]
+
+    /// Add-ons that used to come installed and no longer do (Public Domain Movies and WatchHub). A copy already on
+    /// a device is removed once, on every platform. Adding one again by hand afterwards is respected.
+    private static let retiredStarterAddonIDs: Set<String> = ["org.stremio.pubdomainmovies", "org.stremio.watchhub"]
+
+    private func removeRetiredStarterAddons() async {
+        let defaults = UserDefaults.standard
+        let doneKey = "starterAddon.retired.pubdomain-watchhub"
+        guard !defaults.bool(forKey: doneKey) else { return }
+        for addon in state.installed where Self.retiredStarterAddonIDs.contains(addon.manifest.id) {
+            await manager.remove(addon.id)
+        }
+        await reload()
+        defaults.set(true, forKey: doneKey)
+    }
 
     private func installStarterAddons() async {
         let defaults = UserDefaults.standard
