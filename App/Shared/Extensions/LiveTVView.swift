@@ -68,6 +68,9 @@ final class LiveTVModel {
         return sources.filter { $0.addonID == addonID }
     }
 
+    /// True for a channel list. "Show every catalog" also lists films and shows, which are posters, not channels.
+    var selectedIsLive: Bool { selected.map { LiveTV.isLive($0.catalog) } ?? true }
+
     var genreChoices: [String] { selected?.catalog.genreOptions ?? [] }
     var genreIsRequired: Bool { selected?.catalog.genreRequired ?? false }
     var canSearchOnServer: Bool { selected?.catalog.supportsSearch ?? false }
@@ -285,6 +288,13 @@ struct LiveTVView: View {
 
     /// Wide channel tiles: five across on Apple TV, filling the width; as many as fit on iPhone and iPad.
     private var columns: [GridItem] {
+        // Films and shows (shown with every catalog) are posters: more across, and narrower.
+        if !model.selectedIsLive {
+            if Platform.isTV {
+                return Array(repeating: GridItem(.flexible(), spacing: 28, alignment: .top), count: 7)
+            }
+            return [GridItem(.adaptive(minimum: 104, maximum: 170), spacing: 12, alignment: .top)]
+        }
         if Platform.isTV {
             return Array(repeating: GridItem(.flexible(), spacing: 28, alignment: .top), count: 5)
         }
@@ -458,7 +468,7 @@ struct LiveTVView: View {
             ContentUnavailableView(
                 "No channels found",
                 systemImage: "tv",
-                description: Text(model.searchText.isEmpty ? "This list is empty right now." : "Try a different search or filter.")
+                description: Text(model.searchText.isEmpty ? Self.emptyListNote(model.selected?.addonName) : "Try a different search or filter.")
             )
             .frame(maxWidth: .infinity)
             .padding(.top, Metrics.sectionSpacing)
@@ -466,7 +476,7 @@ struct LiveTVView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: PremiumGrid.rowSpacing) {
                 ForEach(channels) { channel in
                     Button { open(channel) } label: {
-                        ChannelCard(channel: channel, isOpening: openingID == channel.id)
+                        ChannelCard(channel: channel, isOpening: openingID == channel.id, isLive: model.selectedIsLive)
                     }
                     .premiumCardStyle()
                     .disabled(openingID != nil)
@@ -527,6 +537,12 @@ struct LiveTVView: View {
         }
     }
 
+    /// What to tell someone when an add-on's list comes back with nothing in it.
+    private static func emptyListNote(_ addon: String?) -> String {
+        let name = addon.map { "\($0) " } ?? "The add-on "
+        return "\(name)answered, but this list has nothing in it. If it needs an IPTV login, check that login in the add-on's link on its configure page, install the new link, then tap Reload."
+    }
+
     /// True for the stand-in entry an unconfigured add-on shows ("Setup required: add your … key").
     private static func isSetupPlaceholder(_ name: String) -> Bool {
         let lower = name.lowercased()
@@ -560,6 +576,8 @@ struct LiveTVView: View {
 private struct ChannelCard: View {
     let channel: StremioMetaPreview
     let isOpening: Bool
+    /// A channel gets a wide card and the LIVE tag. A film or show (from another catalog) gets a poster, no tag.
+    var isLive = true
     @Environment(\.cardFocused) private var focused
 
     private var shape: RoundedRectangle {
@@ -574,7 +592,11 @@ private struct ChannelCard: View {
                 if let url = LiveTV.artworkURL(for: channel) {
                     CachedAsyncImage(url: url) { phase in
                         if let image = phase.image {
-                            image.resizable().scaledToFit().padding(Metrics.s(12))
+                            if isLive {
+                                image.resizable().scaledToFit().padding(Metrics.s(12))
+                            } else {
+                                image.resizable().scaledToFill()
+                            }
                         } else {
                             placeholder
                         }
@@ -587,17 +609,10 @@ private struct ChannelCard: View {
                     ProgressView().tint(.white)
                 }
             }
-            .aspectRatio(1.6, contentMode: .fit)
+            .aspectRatio(isLive ? 1.6 : 2.0 / 3.0, contentMode: .fit)
+            .clipped()
             .overlay(alignment: .topLeading) {
-                Text("LIVE")
-                    .font(.casa(10.5, weight: .heavy))
-                    .tracking(0.6)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, Metrics.s(7))
-                    .padding(.vertical, Metrics.s(3))
-                    .background(Color(red: 0.88, green: 0.11, blue: 0.16),
-                                in: RoundedRectangle(cornerRadius: Metrics.s(5), style: .continuous))
-                    .padding(Metrics.s(6))
+                if isLive { liveTag }
             }
             .clipShape(shape)
             .overlay { shape.strokeBorder(Color.white, lineWidth: focused ? Metrics.s(2.6) : 0) }
@@ -609,6 +624,18 @@ private struct ChannelCard: View {
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }
+    }
+
+    private var liveTag: some View {
+        Text("LIVE")
+            .font(.casa(10.5, weight: .heavy))
+            .tracking(0.6)
+            .foregroundStyle(.white)
+            .padding(.horizontal, Metrics.s(7))
+            .padding(.vertical, Metrics.s(3))
+            .background(Color(red: 0.88, green: 0.11, blue: 0.16),
+                        in: RoundedRectangle(cornerRadius: Metrics.s(5), style: .continuous))
+            .padding(Metrics.s(6))
     }
 
     private var placeholder: some View {
