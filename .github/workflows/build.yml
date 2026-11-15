@@ -65,6 +65,8 @@ jobs:
         with:
           name: CasaPlay-xcodeproj
           path: CasaPlay.xcodeproj
+      # arm64 only: the Aether engine's Dolby Vision library has no Intel (x86_64) tvOS Simulator slice,
+      # and every real Apple TV, iPhone and iPad is arm64.
       - name: Build ${{ matrix.name }}
         run: |
           set -o pipefail
@@ -73,6 +75,7 @@ jobs:
             -scheme "${{ matrix.scheme }}" \
             -destination "${{ matrix.destination }}" \
             -configuration Debug \
+            ARCHS=arm64 \
             CODE_SIGNING_ALLOWED=NO \
             | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
