@@ -84,6 +84,8 @@ private struct RepositoriesTab: View {
                 addButton
             }
             .padding(Metrics.screenPadding)
+            // Apple TV: Down from the tab chips must find the list even though its buttons sit at the far right.
+            .tvFocusSection()
         }
         .alert("Add Repository", isPresented: $adding) {
             TextField("https://…/index.json", text: $urlText)
@@ -218,6 +220,8 @@ private struct AddonsTab: View {
                 addButton
             }
             .padding(Metrics.screenPadding)
+            // Apple TV: Down from the tab chips must find the list even though its buttons sit at the far right.
+            .tvFocusSection()
         }
         .sheet(item: $selectedAddon) { AddonDetailSheet(addon: $0) }
         .alert("Install Add-on", isPresented: $adding) {
@@ -538,6 +542,8 @@ private struct ProvidersTab: View {
                     .focusableOnTV()
             }
             .padding(Metrics.screenPadding)
+            // Apple TV: Down from the tab chips must find the list even though its buttons sit at the far right.
+            .tvFocusSection()
         }
     }
 }
