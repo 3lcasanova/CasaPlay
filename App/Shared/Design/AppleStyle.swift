@@ -331,7 +331,7 @@ struct HomeHero: View {
 
     private var height: CGFloat {
         if wide {
-            return min(containerSize.width * 9 / 16, containerSize.height * 0.64)
+            return min(containerSize.width * 9 / 16, containerSize.height * 0.7)
         }
         return Self.artHeight + topInset
     }
@@ -811,11 +811,8 @@ extension View {
         #endif
     }
 
-    /// Apple TV used to opt into the tvOS 18 sidebar here. That sidebar folds into a floating pill after a tab is
-    /// chosen, and the system keeps the pill on screen (over the search field, for one) with no way to hide it.
-    /// Apple TV now keeps the standard tab bar, which goes away when focus moves down into the content and comes
-    /// back when you press Up. To bring the sidebar back, return `self.tabViewStyle(.sidebarAdaptable)` under
-    /// `if #available(tvOS 18.0, *)`. Everything else is unchanged.
+    /// Kept for the plain tab bar (iPhone, and Apple TV before tvOS 18). On tvOS 18 the Apple TV app's sidebar is
+    /// used instead: `tvSidebarTabs` in RootView.
     @ViewBuilder
     func appleTVSidebar() -> some View {
         self

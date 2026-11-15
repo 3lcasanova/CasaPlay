@@ -16,6 +16,7 @@ struct RootView: View {
         @Bindable var state = app
 
         navigation
+            .overlay { PosterWallHost() }
             .fullScreenCover(item: $state.playing) { item in
                 PlayerScreen(item: item)
             }
@@ -41,7 +42,13 @@ struct RootView: View {
     @ViewBuilder
     private var navigation: some View {
         #if os(tvOS)
-        tabs
+        // Like the Apple TV app: a sidebar on the left (Search, Home, Library and so on) that folds into a
+        // small tab at the top-left while you browse. Before tvOS 18 it is the plain tab bar.
+        if #available(tvOS 18.0, *) {
+            tvSidebarTabs
+        } else {
+            tabs
+        }
         #else
         if sizeClass == .regular {
             if #available(iOS 18.0, *) {
@@ -54,6 +61,31 @@ struct RootView: View {
         }
         #endif
     }
+
+    #if os(tvOS)
+    @available(tvOS 18.0, *)
+    private var tvSidebarTabs: some View {
+        TabView(selection: selection) {
+            tvTab(.home)
+            tvTab(.movies)
+            tvTab(.series)
+            tvTab(.iptv)
+            TabSection("More") {
+                tvTab(.extensions)
+                tvTab(.servers)
+                tvTab(.profile)
+            }
+        }
+        .tabViewStyle(.sidebarAdaptable)
+    }
+
+    @available(tvOS 18.0, *)
+    private func tvTab(_ section: AppSection) -> some TabContent<AppSection> {
+        Tab(section.title, systemImage: section.systemImage, value: section) {
+            sectionView(section)
+        }
+    }
+    #endif
 
     private var tabs: some View {
         TabView(selection: selection) {

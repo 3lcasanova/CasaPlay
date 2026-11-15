@@ -13,8 +13,8 @@ enum TVMetrics {
     /// Left and right margin of the content.
     static let edge: CGFloat = 80
     static let spacing: CGFloat = 30
-    /// The billboard fills the top of the screen. The first shelf shows under it.
-    static let billboard: CGFloat = 800
+    /// The billboard fills the top of the screen. The first shelf peeks up under it, like the Apple TV app.
+    static let billboard: CGFloat = 860
 }
 
 // MARK: - Telling Home which shelf has focus
