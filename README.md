@@ -111,5 +111,5 @@ Packages/CasaPlayKit/        models, parsers, subtitles, playback router, tests
 ## Before App Store
 
 - App icons exist: `AppIcon` for iPhone and iPad, and `App Icon & Top Shelf Image` for Apple TV (three-layer parallax icon plus Top Shelf and Top Shelf Wide). `Scripts/make_tv_assets.py` regenerates the Apple TV set.
-- Check the licence of any playback library you add. AetherEngine (7.67.1, pinned in `project.yml`) is LGPL-3.0 with an App Store exception, and the FFmpeg build it brings is LGPL-2.1+: keep both as separate frameworks and keep their notices if CasaPlay is ever shared.
+- Check the licence of any playback library you add. AetherEngine (7.66.1, pinned in `project.yml`) is LGPL-3.0 with an App Store exception, and the FFmpeg build it brings is LGPL-2.1+: keep both as separate frameworks and keep their notices if CasaPlay is ever shared.
 - TMDB requires its attribution and logo. OpenSubtitles needs an API key.

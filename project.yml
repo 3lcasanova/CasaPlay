@@ -35,10 +35,12 @@ packages:
   # AetherEngine 7.x (LGPL-3.0 with an App Store exception). Plays MKV with real HDR10 and Dolby Vision
   # on the TV, decoding on the Apple hardware (VideoToolbox). Pinned to one release so a build never
   # changes by itself. 7.x needs iOS and tvOS 18 and Xcode 16.3 or newer; the public API CasaPlay uses
-  # is the same as in 6.89.1, the last release for iOS / tvOS 17.
+  # is the same as in 6.89.1, the last release for iOS / tvOS 17. Not 7.67.0 or later: their benchmark file
+  # Diagnostics/PerFrameBenchmark.swift (line 261) makes Xcode 26.5 stop with "unable to type-check this
+  # expression in reasonable time". 7.66.1 is the last release without it.
   AetherEngine:
     url: https://github.com/superuser404notfound/AetherEngine
-    exactVersion: 7.67.1
+    exactVersion: 7.66.1
 
 targets:
   CasaPlay-iOS:
