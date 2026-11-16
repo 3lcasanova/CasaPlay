@@ -36,6 +36,10 @@ private struct DetailContent: View {
     @State private var trailer: TrailerSource?
     @State private var playingTrailer: TrailerPlayback?
     @State private var trailerNote: String?
+    #if !os(tvOS)
+    /// The YouTube trailer playing inside CasaPlay (iPhone and iPad).
+    @State private var youTubeTrailer: Trailer?
+    #endif
     @Environment(\.openURL) private var openURL
     #if os(tvOS)
     /// How far the page has scrolled, for the picture to melt into the colour wash.
@@ -108,6 +112,11 @@ private struct DetailContent: View {
                 TrailerPlayer(url: playback.url) { playingTrailer = nil }
                     .ignoresSafeArea()
             }
+            #if !os(tvOS)
+            .fullScreenCover(item: $youTubeTrailer) { video in
+                TrailerScreen(title: item.title, trailers: [video])
+            }
+            #endif
             .alert("Trailer", isPresented: Binding(get: { trailerNote != nil },
                                                    set: { if !$0 { trailerNote = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -826,6 +835,13 @@ private struct DetailContent: View {
         case .apple(let url):
             playingTrailer = TrailerPlayback(url: url)
         case .youTube(let key):
+            #if !os(tvOS)
+            // iPhone and iPad: YouTube's own player, inside CasaPlay.
+            if let video = Trailer(youTubeID: key) {
+                youTubeTrailer = video
+                return
+            }
+            #endif
             openYouTube(YouTubeLinks.candidates(for: key))
         case nil:
             break

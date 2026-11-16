@@ -4,8 +4,9 @@
 //
 // Apple's own trailer from the iTunes Store first, for films and series. It plays right here in Apple's
 // player, in good quality, like in the Apple TV app. The Canadian store is asked first, then the American
-// one. Only when Apple has none does the official trailer on YouTube that TMDB lists open in the YouTube
-// app: Apple TV has no web view, and YouTube's videos can't be played outside YouTube's own player.
+// one. When Apple has none, the official trailer on YouTube that TMDB lists is used. On iPhone and iPad it
+// plays inside CasaPlay in YouTube's own embedded player (TrailerScreen). Apple TV has no web view, and
+// YouTube's videos can't be played outside YouTube's own player, so there it opens in the YouTube app.
 
 import SwiftUI
 import AVKit
@@ -15,7 +16,7 @@ import CasaPlayKit
 enum TrailerSource: Equatable {
     /// A video file Apple's player plays in the app.
     case apple(URL)
-    /// A YouTube video, opened in the YouTube app.
+    /// A YouTube video: played in the app on iPhone and iPad, opened in the YouTube app on Apple TV.
     case youTube(key: String)
 }
 
@@ -26,16 +27,19 @@ enum TrailerFinder {
         if let url = await appleTrailer(title: item.title, year: item.year, isShow: isShow) {
             return .apple(url)
         }
-        guard let tmdb else { return nil }
-        let video: TMDBVideo?
-        if let showID = item.tmdbShowID {
-            video = try? await tmdb.trailer(showID: showID)
-        } else if let movieID = item.tmdbMovieID {
-            video = try? await tmdb.trailer(movieID: movieID)
-        } else {
-            video = nil
+        var video: TMDBVideo?
+        if let tmdb {
+            if let showID = item.tmdbShowID {
+                video = try? await tmdb.trailer(showID: showID)
+            } else if let movieID = item.tmdbMovieID {
+                video = try? await tmdb.trailer(movieID: movieID)
+            }
         }
-        return video.map { .youTube(key: $0.key) }
+        if let video { return .youTube(key: video.key) }
+        // No TMDB key, or TMDB lists none: Cinemeta, which needs no key, knows titles by their IMDb ID.
+        guard let imdb = item.imdbID, !imdb.isEmpty else { return nil }
+        let listed = (try? await CinemetaTrailers().trailers(imdbID: imdb, isSeries: isShow)) ?? []
+        return listed.first.map { .youTube(key: $0.youTubeID) }
     }
 
     // MARK: Apple's trailers
