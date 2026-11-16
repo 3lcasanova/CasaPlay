@@ -243,6 +243,42 @@ public struct TMDBClient {
         try await get(path: "/tv/\(id)/recommendations", params: Self.pageParams(page), as: TMDBShowPage.self).results
     }
 
+    // MARK: - Trailers
+
+    /// A film's best trailer on YouTube, or nil when TMDB lists none.
+    public func trailer(movieID: Int) async throws -> TMDBVideo? {
+        Self.bestTrailer(try await videos(at: "/movie/\(movieID)/videos"))
+    }
+
+    /// A show's best trailer on YouTube, or nil when TMDB lists none.
+    public func trailer(showID: Int) async throws -> TMDBVideo? {
+        Self.bestTrailer(try await videos(at: "/tv/\(showID)/videos"))
+    }
+
+    private func videos(at path: String) async throws -> [TMDBVideo] {
+        try await get(path: path, params: ["include_video_language": "en,null"], as: TMDBVideoList.self).results ?? []
+    }
+
+    /// YouTube only. Trailers before teasers, official before fan uploads, English first, then the newest.
+    static func bestTrailer(_ videos: [TMDBVideo]) -> TMDBVideo? {
+        func rank(_ video: TMDBVideo) -> Int {
+            var score = 0
+            switch video.type {
+            case "Trailer": score += 100
+            case "Teaser": score += 50
+            default: break
+            }
+            if video.official == true { score += 20 }
+            if video.iso_639_1 == nil || video.iso_639_1 == "en" { score += 10 }
+            return score
+        }
+        let usable = videos.filter { $0.site == "YouTube" && !$0.key.isEmpty && ($0.type == "Trailer" || $0.type == "Teaser") }
+        return usable.max { lhs, rhs in
+            let (a, b) = (rank(lhs), rank(rhs))
+            return a != b ? a < b : (lhs.published_at ?? "") < (rhs.published_at ?? "")
+        }
+    }
+
     // MARK: - Title logos
 
     /// The title of a film drawn as its logo, for the big billboard. English first, then logos with no language.
@@ -546,4 +582,21 @@ struct TMDBLogo: Decodable {
     let file_path: String
     let iso_639_1: String?
     let vote_average: Double?
+}
+
+/// A video TMDB links to a title: trailers, teasers, clips.
+public struct TMDBVideo: Decodable, Sendable, Equatable {
+    public let key: String
+    public let site: String
+    public let type: String
+    public let official: Bool?
+    public let iso_639_1: String?
+    public let published_at: String?
+
+    /// The YouTube page for the video.
+    public var youTubeURL: URL? { URL(string: "https://www.youtube.com/watch?v=\(key)") }
+}
+
+struct TMDBVideoList: Decodable {
+    let results: [TMDBVideo]?
 }

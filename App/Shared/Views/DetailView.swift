@@ -32,6 +32,11 @@ private struct DetailContent: View {
     @State private var selectedSeason = 1
     @State private var episodes: [EpisodeInfo] = []
     @State private var streamingEpisode: EpisodeStreamTarget?
+    /// The title's trailer, once found; the Apple trailer playing; a note when YouTube couldn't open.
+    @State private var trailer: TrailerSource?
+    @State private var playingTrailer: TrailerPlayback?
+    @State private var trailerNote: String?
+    @Environment(\.openURL) private var openURL
     #if os(tvOS)
     /// How far the page has scrolled, for the picture to melt into the colour wash.
     @State private var scrollOffset: CGFloat = 0
@@ -95,6 +100,19 @@ private struct DetailContent: View {
                                  totalSeasons: episodeSeasonCount)
                         .environment(app)
                 }
+            }
+            .task(id: item.id) {
+                trailer = await TrailerFinder.find(for: item, tmdb: app.tmdbClient)
+            }
+            .fullScreenCover(item: $playingTrailer) { playback in
+                TrailerPlayer(url: playback.url) { playingTrailer = nil }
+                    .ignoresSafeArea()
+            }
+            .alert("Trailer", isPresented: Binding(get: { trailerNote != nil },
+                                                   set: { if !$0 { trailerNote = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(trailerNote ?? "")
             }
             .task(id: item.id) {
                 await app.refreshIMDb(for: item.id)
@@ -415,7 +433,15 @@ private struct DetailContent: View {
     /// The big white button.
     @ViewBuilder
     private func primaryAction(_ decision: PlaybackDecision) -> some View {
-        if needsEpisode {
+        if needsEpisode && trailer != nil {
+            // Series: the trailer takes the Episodes button's place. The episodes are in the Season row below.
+            Button {
+                playTrailer()
+            } label: {
+                Label("Trailer", systemImage: "play.rectangle.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(HeroButtonStyle(kind: .primary))
+        } else if needsEpisode {
             Button {
                 showingEpisodes = true
             } label: {
@@ -445,6 +471,15 @@ private struct DetailContent: View {
     /// A text button, the "+" (favourites) and the "..." menu.
     private func secondaryRow(_ decision: PlaybackDecision) -> some View {
         HStack(spacing: 12) {
+            if trailer != nil && !needsEpisode {
+                Button {
+                    playTrailer()
+                } label: {
+                    Label("Trailer", systemImage: "play.rectangle")
+                }
+                .buttonStyle(HeroButtonStyle(kind: .secondary))
+            }
+
             if item.tmdbShowID != nil && !needsEpisode {
                 Button {
                     showingEpisodes = true
@@ -565,13 +600,31 @@ private struct DetailContent: View {
     @ViewBuilder
     private func actionButtons(_ decision: PlaybackDecision) -> some View {
         if needsEpisode {
-            Button {
-                showingEpisodes = true
-            } label: {
-                Label("Episodes", systemImage: "list.bullet")
+            // Series: the trailer takes the Episodes button's place. The episodes are in the Season row below.
+            if trailer != nil {
+                Button {
+                    playTrailer()
+                } label: {
+                    Label("Trailer", systemImage: "play.rectangle.fill")
+                }
+                .buttonStyle(HeroButtonStyle(kind: .primary))
+            } else {
+                Button {
+                    showingEpisodes = true
+                } label: {
+                    Label("Episodes", systemImage: "list.bullet")
+                }
+                .buttonStyle(HeroButtonStyle(kind: .primary))
             }
-            .buttonStyle(HeroButtonStyle(kind: .primary))
         } else if needsStream {
+            if trailer != nil {
+                Button {
+                    playTrailer()
+                } label: {
+                    Label("Trailer", systemImage: "play.rectangle")
+                }
+                .buttonStyle(HeroButtonStyle(kind: .secondary))
+            }
             Button {
                 showingStreams = true
             } label: {
@@ -582,6 +635,14 @@ private struct DetailContent: View {
             }
             .buttonStyle(HeroButtonStyle(kind: .primary))
         } else {
+            if trailer != nil {
+                Button {
+                    playTrailer()
+                } label: {
+                    Label("Trailer", systemImage: "play.rectangle")
+                }
+                .buttonStyle(HeroButtonStyle(kind: .secondary))
+            }
             Button {
                 app.play(item)
             } label: {
@@ -757,6 +818,30 @@ private struct DetailContent: View {
     }
 
     private var episodeSeasonCount: Int { item.numberOfSeasons ?? 1 }
+
+    // MARK: Trailer
+
+    private func playTrailer() {
+        switch trailer {
+        case .apple(let url):
+            playingTrailer = TrailerPlayback(url: url)
+        case .youTube(let key):
+            openYouTube(YouTubeLinks.candidates(for: key))
+        case nil:
+            break
+        }
+    }
+
+    /// Tries each link in turn; says so when none opens.
+    private func openYouTube(_ links: [URL]) {
+        guard let first = links.first else {
+            trailerNote = "Install the YouTube app from the App Store to watch this trailer."
+            return
+        }
+        openURL(first) { accepted in
+            if !accepted { openYouTube(Array(links.dropFirst())) }
+        }
+    }
 
     // MARK: How to Watch
 

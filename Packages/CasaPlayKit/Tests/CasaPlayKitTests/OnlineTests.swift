@@ -259,3 +259,38 @@ final class SubtitleFileTests: XCTestCase {
         XCTAssertTrue(SampleData.movies.allSatisfy { $0.imdbID == nil }, "sample titles are invented, so no IMDb pages")
     }
 }
+
+final class TMDBTrailerTests: XCTestCase {
+    private func video(_ key: String, site: String = "YouTube", type: String = "Trailer",
+                       official: Bool? = true, language: String? = "en", date: String? = nil) -> TMDBVideo {
+        let json: [String: Any?] = ["key": key, "site": site, "type": type, "official": official,
+                                    "iso_639_1": language, "published_at": date]
+        let data = try! JSONSerialization.data(withJSONObject: json.compactMapValues { $0 })
+        return try! JSONDecoder().decode(TMDBVideo.self, from: data)
+    }
+
+    func testPicksOfficialEnglishTrailerOverTeasersClipsAndOtherSites() {
+        let best = TMDBClient.bestTrailer([
+            video("clip", type: "Clip"),
+            video("teaser", type: "Teaser"),
+            video("vimeo", site: "Vimeo"),
+            video("fan", official: false),
+            video("french", language: "fr"),
+            video("official"),
+        ])
+        XCTAssertEqual(best?.key, "official")
+    }
+
+    func testNewestWinsATie() {
+        let best = TMDBClient.bestTrailer([
+            video("old", date: "2021-01-01T00:00:00.000Z"),
+            video("new", date: "2022-05-01T00:00:00.000Z"),
+        ])
+        XCTAssertEqual(best?.key, "new")
+    }
+
+    func testNoTrailerWhenOnlyClips() {
+        XCTAssertNil(TMDBClient.bestTrailer([video("clip", type: "Featurette")]))
+        XCTAssertEqual(video("abc").youTubeURL?.absoluteString, "https://www.youtube.com/watch?v=abc")
+    }
+}
