@@ -6,7 +6,8 @@
 // player, in good quality, like in the Apple TV app. The Canadian store is asked first, then the American
 // one. When Apple has none, the official trailer on YouTube that TMDB lists is used. On iPhone and iPad it
 // plays inside CasaPlay in YouTube's own embedded player (TrailerScreen). Apple TV has no web view, and
-// YouTube's videos can't be played outside YouTube's own player, so there it opens in the YouTube app.
+// YouTube's videos can't be played outside YouTube's own player, so there the Trailer button only shows
+// when Apple has the trailer: CasaPlay never sends the viewer out to the YouTube app.
 
 import SwiftUI
 import AVKit
@@ -16,7 +17,7 @@ import CasaPlayKit
 enum TrailerSource: Equatable {
     /// A video file Apple's player plays in the app.
     case apple(URL)
-    /// A YouTube video: played in the app on iPhone and iPad, opened in the YouTube app on Apple TV.
+    /// A YouTube video, played in the app on iPhone and iPad. Never offered on Apple TV.
     case youTube(key: String)
 }
 
@@ -27,6 +28,11 @@ enum TrailerFinder {
         if let url = await appleTrailer(title: item.title, year: item.year, isShow: isShow) {
             return .apple(url)
         }
+        #if os(tvOS)
+        // Apple TV can only play Apple's trailer inside CasaPlay. With none, there is no Trailer button,
+        // so the viewer is never sent out to the YouTube app.
+        return nil
+        #else
         var video: TMDBVideo?
         if let tmdb {
             if let showID = item.tmdbShowID {
@@ -40,6 +46,7 @@ enum TrailerFinder {
         guard let imdb = item.imdbID, !imdb.isEmpty else { return nil }
         let listed = (try? await CinemetaTrailers().trailers(imdbID: imdb, isSeries: isShow)) ?? []
         return listed.first.map { .youTube(key: $0.youTubeID) }
+        #endif
     }
 
     // MARK: Apple's trailers
