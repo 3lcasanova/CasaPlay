@@ -48,8 +48,11 @@ final class ExtensionCenter {
 
     /// Add-ons that come installed. Each is installed once; removing one in the app keeps it removed.
     /// - OpenSubtitles v3: Stremio's subtitles add-on.
+    /// - Anime Kitsu: anime lists (trending, top airing, most popular, highest rated) and their details. A public
+    ///   add-on with no account or key in its link.
     private static let starterAddons: [(id: String, manifest: String, role: ProviderRole)] = [
         ("org.stremio.opensubtitlesv3", "https://opensubtitles-v3.strem.io/manifest.json", .backup),
+        ("community.anime.kitsu", "https://anime-kitsu.strem.fun/manifest.json", .backup),
     ]
 
     /// Add-ons that used to come installed and no longer do (Public Domain Movies and WatchHub). A copy already on

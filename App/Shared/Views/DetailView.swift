@@ -32,6 +32,11 @@ private struct DetailContent: View {
     @State private var selectedSeason = 1
     @State private var episodes: [EpisodeInfo] = []
     @State private var streamingEpisode: EpisodeStreamTarget?
+    #if !os(tvOS)
+    /// The title's trailers, best first, and whether the in-app trailer player is open.
+    @State private var trailers: [Trailer] = []
+    @State private var showingTrailer = false
+    #endif
     #if os(tvOS)
     /// How far the page has scrolled, for the picture to melt into the colour wash.
     @State private var scrollOffset: CGFloat = 0
@@ -77,6 +82,15 @@ private struct DetailContent: View {
             .task(id: item.id) {
                 related = await app.relatedTitles(for: item)
             }
+            #if !os(tvOS)
+            .task(id: item.id) {
+                trailers = []
+                trailers = await app.trailers(for: item)
+            }
+            .fullScreenCover(isPresented: $showingTrailer) {
+                TrailerScreen(title: item.title, trailers: trailers)
+            }
+            #endif
             .task(id: EpisodeLoadKey(id: item.id, season: selectedSeason)) {
                 await loadEpisodes()
             }
@@ -468,6 +482,16 @@ private struct DetailContent: View {
             }
             .buttonStyle(HeroButtonStyle(kind: .icon))
             .accessibilityLabel(item.isFavorite ? "Remove from favorites" : "Add to favorites")
+
+            if !trailers.isEmpty {
+                Button {
+                    showingTrailer = true
+                } label: {
+                    Image(systemName: "play.rectangle")
+                }
+                .buttonStyle(HeroButtonStyle(kind: .icon))
+                .accessibilityLabel("Play trailer")
+            }
 
             moreMenu(decision)
         }

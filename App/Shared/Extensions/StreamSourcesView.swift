@@ -745,15 +745,27 @@ private struct WhereToWatchRow: View {
     /// A note about the title rather than a service: shown with an info symbol.
     var isNote = false
     @Environment(\.openURL) private var openURL
+    #if !os(tvOS)
+    /// A YouTube link picked from the list, played inside CasaPlay instead of the YouTube app.
+    @State private var inAppVideo: Trailer?
+    #endif
 
     var body: some View {
         #if os(tvOS)
         content.focusable()
         #else
         Button {
-            if case .external(let url) = candidate.location { openURL(url) }
+            guard case .external(let url) = candidate.location else { return }
+            if let id = YouTubeLink.videoID(from: url), let video = Trailer(youTubeID: id) {
+                inAppVideo = video
+            } else {
+                openURL(url)
+            }
         } label: { content }
         .buttonStyle(.plain)
+        .fullScreenCover(item: $inAppVideo) { video in
+            TrailerScreen(title: video.name, trailers: [video])
+        }
         #endif
     }
 

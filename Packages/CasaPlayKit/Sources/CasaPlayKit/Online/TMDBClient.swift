@@ -255,6 +255,12 @@ public struct TMDBClient {
         try await logoPath(at: "/tv/\(showID)/images")
     }
 
+    /// The trailers TMDB lists at a "/videos" path, best first (see TrailerPicker).
+    func trailers(at path: String) async throws -> [Trailer] {
+        let list = try await get(path: path, params: ["include_video_language": "en,null"], as: TMDBVideoList.self)
+        return TrailerPicker.pick(from: list.results ?? [])
+    }
+
     private func logoPath(at path: String) async throws -> String? {
         let images = try await get(path: path, params: ["include_image_language": "en,null"], as: TMDBImages.self)
         return Self.bestLogo(images.logos ?? [])

@@ -246,6 +246,22 @@ final class AppState {
         return []
     }
 
+    /// A title's trailers, best first: TMDB's list when there is a key, Cinemeta's (no key needed) otherwise.
+    func trailers(for item: MediaItem) async -> [Trailer] {
+        if let client = tmdbClient {
+            var found: [Trailer] = []
+            if let showID = item.tmdbShowID {
+                found = (try? await client.showTrailers(id: showID)) ?? []
+            } else if let movieID = item.tmdbMovieID {
+                found = (try? await client.movieTrailers(id: movieID)) ?? []
+            }
+            if !found.isEmpty { return found }
+        }
+        guard let imdb = item.imdbID, !imdb.isEmpty else { return [] }
+        let isSeries = item.tmdbShowID != nil || item.kind == .episode
+        return (try? await CinemetaTrailers().trailers(imdbID: imdb, isSeries: isSeries)) ?? []
+    }
+
     var activeProfile: Profile {
         profiles.first { $0.id == activeProfileID } ?? profiles[0]
     }
