@@ -2,9 +2,10 @@
 //
 // The Trailer button on a title's page (Apple TV, iPhone and iPad).
 //
-// Films: Apple's own trailer from the iTunes Store first. It plays right here in Apple's player, in good
-// quality, like in the Apple TV app. When Apple has none (and for series), the official trailer on
-// YouTube that TMDB lists opens in the YouTube app.
+// Apple's own trailer from the iTunes Store first, for films and series. It plays right here in Apple's
+// player, in good quality, like in the Apple TV app. The Canadian store is asked first, then the American
+// one. Only when Apple has none does the official trailer on YouTube that TMDB lists open in the YouTube
+// app: Apple TV has no web view, and YouTube's videos can't be played outside YouTube's own player.
 
 import SwiftUI
 import AVKit
@@ -21,7 +22,8 @@ enum TrailerSource: Equatable {
 enum TrailerFinder {
     /// The best trailer for a title, or nil when there is none. Never throws: no trailer just hides the button.
     static func find(for item: MediaItem, tmdb: TMDBClient?) async -> TrailerSource? {
-        if item.tmdbShowID == nil, let url = await appleTrailer(title: item.title, year: item.year) {
+        let isShow = item.tmdbShowID != nil
+        if let url = await appleTrailer(title: item.title, year: item.year, isShow: isShow) {
             return .apple(url)
         }
         guard let tmdb else { return nil }
@@ -43,33 +45,58 @@ enum TrailerFinder {
     }
 
     private struct Track: Decodable {
+        /// A film's name.
         let trackName: String?
+        /// A series' name, for a season.
+        let artistName: String?
+        /// "Severance, Season 1", for a season.
+        let collectionName: String?
         let releaseDate: String?
         let previewUrl: String?
     }
 
-    /// Looks the film up in the iTunes Store and returns its trailer. Same name, and a year no more than one off.
-    private static func appleTrailer(title: String, year: Int?) async -> URL? {
-        let country = (Locale.current.region?.identifier ?? "US").lowercased()
+    /// The stores asked, in order: the Apple TV's own, then the American one, which has the most trailers.
+    private static var stores: [String] {
+        let own = (Locale.current.region?.identifier ?? "CA").lowercased()
+        return own == "us" ? ["us"] : [own, "us"]
+    }
+
+    /// Looks the title up in the iTunes Store and returns its trailer.
+    private static func appleTrailer(title: String, year: Int?, isShow: Bool) async -> URL? {
+        for store in stores {
+            if let url = await appleTrailer(title: title, year: year, isShow: isShow, store: store) { return url }
+        }
+        return nil
+    }
+
+    private static func appleTrailer(title: String, year: Int?, isShow: Bool, store: String) async -> URL? {
         var comps = URLComponents(string: "https://itunes.apple.com/search")!
         comps.queryItems = [
             URLQueryItem(name: "term", value: title),
-            URLQueryItem(name: "media", value: "movie"),
-            URLQueryItem(name: "entity", value: "movie"),
-            URLQueryItem(name: "country", value: country),
-            URLQueryItem(name: "limit", value: "25"),
+            URLQueryItem(name: "media", value: isShow ? "tvShow" : "movie"),
+            URLQueryItem(name: "entity", value: isShow ? "tvSeason" : "movie"),
+            URLQueryItem(name: "country", value: store),
+            URLQueryItem(name: "limit", value: "50"),
         ]
         guard let url = comps.url else { return nil }
         do {
             let (data, response) = try await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 10))
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
             let tracks = try JSONDecoder().decode(SearchResult.self, from: data).results
+                .filter { $0.previewUrl?.hasPrefix("https://") == true }
             let wanted = simplified(title)
-            let match = tracks.first { track in
-                guard let name = track.trackName, simplified(name) == wanted,
-                      let preview = track.previewUrl, preview.hasPrefix("https://") else { return false }
-                guard let year, let released = track.releaseDate.flatMap({ Int($0.prefix(4)) }) else { return true }
-                return abs(released - year) <= 1
+            let match: Track?
+            if isShow {
+                // Same series name; the first season's trailer when there is one, otherwise any season's.
+                let seasons = tracks.filter { simplified($0.artistName ?? "") == wanted }
+                match = seasons.first { ($0.collectionName ?? "").hasSuffix("Season 1") } ?? seasons.first
+            } else {
+                // Same name, and a year no more than one off.
+                match = tracks.first { track in
+                    guard simplified(track.trackName ?? "") == wanted else { return false }
+                    guard let year, let released = track.releaseDate.flatMap({ Int($0.prefix(4)) }) else { return true }
+                    return abs(released - year) <= 1
+                }
             }
             return match?.previewUrl.flatMap(URL.init(string:))
         } catch {
