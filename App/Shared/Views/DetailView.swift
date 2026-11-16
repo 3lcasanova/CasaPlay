@@ -31,6 +31,9 @@ private struct DetailContent: View {
     /// The season shown in the episode shelf, its episodes, and the episode being opened for streams.
     @State private var selectedSeason = 1
     @State private var episodes: [EpisodeInfo] = []
+    /// True once the Season row was asked for and came back empty (no TMDB key, no internet, nothing listed).
+    /// Apple TV shows its Episodes button only then, as the way to the episodes when the row is missing.
+    @State private var seasonRowIsMissing = false
     @State private var streamingEpisode: EpisodeStreamTarget?
     /// The title's trailer, once found; the Apple trailer playing; a note when YouTube couldn't open.
     @State private var trailer: TrailerSource?
@@ -609,7 +612,8 @@ private struct DetailContent: View {
     @ViewBuilder
     private func actionButtons(_ decision: PlaybackDecision) -> some View {
         if needsEpisode {
-            // Series: the trailer takes the Episodes button's place. The episodes are in the Season row below.
+            // Series: no Episodes button. The episodes are in the Season row below, and the trailer, when there
+            // is one, is the main button. Only when that row is missing does the Episodes button come back.
             if trailer != nil {
                 Button {
                     playTrailer()
@@ -617,7 +621,7 @@ private struct DetailContent: View {
                     Label("Trailer", systemImage: "play.rectangle.fill")
                 }
                 .buttonStyle(HeroButtonStyle(kind: .primary))
-            } else {
+            } else if seasonRowIsMissing {
                 Button {
                     showingEpisodes = true
                 } label: {
@@ -664,7 +668,7 @@ private struct DetailContent: View {
             .disabled(!decision.isPlayable)
         }
 
-        if item.tmdbShowID != nil && !needsEpisode {
+        if item.tmdbShowID != nil && !needsEpisode && seasonRowIsMissing {
             Button {
                 showingEpisodes = true
             } label: {
@@ -795,6 +799,7 @@ private struct DetailContent: View {
     private func loadEpisodes() async {
         guard let showID = item.tmdbShowID, let tmdb = app.tmdbClient else {
             episodes = []
+            seasonRowIsMissing = item.tmdbShowID != nil
             return
         }
         let season = selectedSeason
@@ -802,9 +807,11 @@ private struct DetailContent: View {
             let detail = try await tmdb.seasonDetail(showID: showID, season: season)
             guard !Task.isCancelled else { return }
             episodes = (detail.episodes ?? []).map(EpisodeInfo.init(tmdb:))
+            seasonRowIsMissing = episodes.isEmpty
         } catch {
             guard !Task.isCancelled else { return }
             episodes = []
+            seasonRowIsMissing = true
         }
     }
 
