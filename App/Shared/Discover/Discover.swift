@@ -234,7 +234,8 @@ struct DiscoverShelf: View {
     var body: some View {
         if !titles.isEmpty {
             #if os(tvOS)
-            TVShelf(title: title) { tiles }
+            // CasaPlay 3i VERSION: the focused title opens into a wide picture, with its details under the row.
+            TVSpotlightShelf(title: title, titles: titles, ranked: ranked, onSelect: onSelect)
                 .task(id: titles.count) { prefetchPosters() }
             #else
             Shelf(title: title, destination: destination) { tiles }
