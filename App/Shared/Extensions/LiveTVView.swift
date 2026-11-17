@@ -38,6 +38,8 @@ final class LiveTVModel {
     var searchText = ""
 
     @ObservationIgnored private var clients: [String: StremioClient] = [:]
+    /// Xtream Codes servers shown as channel lists, keyed by their source addonID.
+    @ObservationIgnored private var xtream: [String: XtreamProvider] = [:]
     @ObservationIgnored private var installed: [InstalledExtension] = []
     @ObservationIgnored private var center: ExtensionCenter?
     @ObservationIgnored private var loadTask: Task<Void, Never>?
@@ -45,6 +47,7 @@ final class LiveTVModel {
     @ObservationIgnored private var appliedSearch = ""
 
     private static let showAllKey = "iptv.showAllCatalogs"
+    static let showsAddonChannels = false
 
     init() {
         showAllCatalogs = UserDefaults.standard.bool(forKey: Self.showAllKey)
@@ -87,7 +90,10 @@ final class LiveTVModel {
     func loadSources(center: ExtensionCenter) async {
         self.center = center
         installed = center.state.installed
-        let addons = installed.filter { $0.isEnabled && $0.compatibility.isUsable && $0.manifest.hasCatalogResource }
+        // Only Xtream Codes channels for now. Set showsAddonChannels to true to list add-on channels again.
+        let addons = Self.showsAddonChannels
+            ? installed.filter { $0.isEnabled && $0.compatibility.isUsable && $0.manifest.hasCatalogResource }
+            : []
 
         var found: [String: StremioClient] = [:]
         for addon in addons {
@@ -116,6 +122,18 @@ final class LiveTVModel {
                 list.append(LiveSource(addonID: addon.id, addonName: addon.name, manifest: manifest, catalog: catalog))
             }
         }
+        // Live channels from Xtream Codes logins (Servers tab), one list per server.
+        var xtreamFound: [String: XtreamProvider] = [:]
+        for server in ServerCenter.shared.xtreamServers() {
+            let categories = (try? await server.provider.liveCategoryNames()) ?? []
+            guard !Task.isCancelled,
+                  let manifest = XtreamLive.manifest(serverID: server.config.id, name: server.config.name, categories: categories),
+                  let catalog = manifest.catalogs.first else { continue }
+            xtreamFound[manifest.id] = server.provider
+            list.insert(LiveSource(addonID: manifest.id, addonName: server.config.name, manifest: manifest, catalog: catalog), at: 0)
+        }
+        xtream = xtreamFound
+
         let previous = selectedID
         sources = list
         hasLoadedSources = true
@@ -157,6 +175,9 @@ final class LiveTVModel {
     // MARK: Channels
 
     private func fetch(skip: Int) async throws -> [StremioMetaPreview] {
+        if let source = selected, let provider = xtream[source.addonID] {
+            return skip == 0 ? try await provider.liveChannels(category: genre) : []
+        }
         guard let source = selected, let client = clients[source.addonID] else { return [] }
         let term = canSearchOnServer ? trimmedSearch : ""
         return try await client.catalog(
@@ -238,6 +259,10 @@ final class LiveTVModel {
     /// for playable links.
     func resolve(_ channel: StremioMetaPreview) async throws -> Resolution {
         guard let source = selected else { return Resolution(options: [], onlyUnplayable: false) }
+        if let provider = xtream[source.addonID] {
+            let options = provider.liveOption(for: channel.id, title: channel.name).map { [$0] } ?? []
+            return Resolution(options: options, onlyUnplayable: false)
+        }
         let type = channel.type.isEmpty ? source.catalog.type : channel.type
 
         var order: [String] = []
@@ -372,14 +397,9 @@ struct LiveTVView: View {
         ContentUnavailableView {
             Label("No Live TV yet", systemImage: "antenna.radiowaves.left.and.right")
         } description: {
-            Text(model.showAllCatalogs
-                 ? "None of your add-ons has a catalog that can be listed."
-                 : "None of your installed add-ons lists live channels. Install an IPTV add-on in Extensions. If yours files its channels under another type, show every catalog.")
+            Text("Add your Xtream Codes login in the Servers tab to see your live channels here.")
         } actions: {
-            Button("Open Extensions") { app.selectedSection = .extensions }
-            if !model.showAllCatalogs {
-                Button("Show every catalog") { model.setShowAllCatalogs(true) }
-            }
+            Button("Open Servers") { app.selectedSection = .servers }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Metrics.sectionSpacing)
@@ -498,10 +518,12 @@ struct LiveTVView: View {
     private var footer: some View {
         chipRow {
             ChipButton(title: "Reload", isSelected: false) { model.reload() }
-            ChipButton(
-                title: model.showAllCatalogs ? "Show only Live TV" : "Show every catalog",
-                isSelected: false
-            ) { model.setShowAllCatalogs(!model.showAllCatalogs) }
+            if LiveTVModel.showsAddonChannels {
+                ChipButton(
+                    title: model.showAllCatalogs ? "Show only Live TV" : "Show every catalog",
+                    isSelected: false
+                ) { model.setShowAllCatalogs(!model.showAllCatalogs) }
+            }
         }
         .padding(.top, Metrics.s(8))
     }

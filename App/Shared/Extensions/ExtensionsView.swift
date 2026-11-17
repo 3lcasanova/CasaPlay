@@ -139,7 +139,7 @@ private struct RepositoryRow: View {
                 .frame(width: Metrics.s(36))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(repo.name ?? repo.url.host ?? repo.url.absoluteString)
+                Text(repo.name)
                     .font(.casa(14, weight: .semibold))
                     .foregroundStyle(Theme.textPrimary)
                 Text(repo.url.absoluteString)

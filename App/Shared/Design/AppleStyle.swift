@@ -62,6 +62,7 @@ struct ShelfTitle: View {
 /// A poster with nothing under it, rounded, with a hairline edge. With a rank it is a "Top 10" card:
 /// a big number in the top left corner.
 struct ApplePosterCard: View {
+    @Environment(\.cardFocused) private var focused
     let title: String
     let posterPath: String?
     var rank: Int? = nil
@@ -95,7 +96,12 @@ struct ApplePosterCard: View {
                 if let progress { ProgressBar(fraction: progress) }
             }
             .clipShape(shape)
-            .overlay { shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
+            .overlay {
+                // Selected: bright amber outline with a soft glow (Apple TV).
+                shape.strokeBorder(focused ? Theme.accent : Color.white.opacity(0.12),
+                                   lineWidth: focused ? Metrics.s(5) : 1)
+            }
+            .shadow(color: Theme.accent.opacity(focused ? 0.7 : 0), radius: focused ? Metrics.s(14) : 0)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(rank.map { "Number \($0), \(title)" } ?? title)
     }
@@ -114,6 +120,7 @@ struct ApplePosterCard: View {
 
 /// A wide card for something you are partway through: the picture, the title, and how much is left.
 struct ContinueCard: View {
+    @Environment(\.cardFocused) private var focused
     let item: MediaItem
 
     private var shape: RoundedRectangle {
@@ -126,7 +133,12 @@ struct ContinueCard: View {
             .overlay { BackdropImage(path: item.backdropPath ?? item.posterPath, hue: item.artHue) }
             .overlay(alignment: .bottom) { caption }
             .clipShape(shape)
-            .overlay { shape.strokeBorder(Color.white.opacity(0.12), lineWidth: 1) }
+            .overlay {
+                // Selected: bright amber outline with a soft glow (Apple TV).
+                shape.strokeBorder(focused ? Theme.accent : Color.white.opacity(0.12),
+                                   lineWidth: focused ? Metrics.s(5) : 1)
+            }
+            .shadow(color: Theme.accent.opacity(focused ? 0.7 : 0), radius: focused ? Metrics.s(14) : 0)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("\(item.title), \(detailText)")
     }

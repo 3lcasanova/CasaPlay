@@ -282,8 +282,10 @@ struct PremiumPosterCard: View {
                 .overlay(alignment: .topTrailing) { topRight }
                 .clipShape(shape)
                 .overlay {
-                    shape.strokeBorder(Color.white, lineWidth: focused ? Metrics.s(2.6) : 0)
+                    // Selected poster: a bright amber outline with a soft glow, so it stands out clearly.
+                    shape.strokeBorder(Theme.accent, lineWidth: focused ? Metrics.s(5) : 0)
                 }
+                .shadow(color: Theme.accent.opacity(focused ? 0.7 : 0), radius: focused ? Metrics.s(14) : 0)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)

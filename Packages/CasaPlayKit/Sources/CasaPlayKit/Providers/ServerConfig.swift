@@ -9,11 +9,15 @@ import Foundation
 public enum ServerKind: String, Codable, CaseIterable, Sendable {
     case plex
     case jellyfin
+    case nativePlaylist
+    case xtream
 
     public var label: String {
         switch self {
         case .plex: return "Plex"
         case .jellyfin: return "Jellyfin"
+        case .nativePlaylist: return "M3U Playlist"
+        case .xtream: return "Xtream Codes"
         }
     }
 
@@ -21,6 +25,7 @@ public enum ServerKind: String, Codable, CaseIterable, Sendable {
         switch self {
         case .plex: return 32400
         case .jellyfin: return 8096
+        case .nativePlaylist, .xtream: return 443
         }
     }
 }

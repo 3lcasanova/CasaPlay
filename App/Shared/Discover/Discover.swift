@@ -16,6 +16,8 @@ struct DiscoverTitle: Identifiable, Hashable {
     let rating: Double?
     /// Release date for a film, first air date for a show ("yyyy-MM-dd"), when TMDB has one.
     let releaseDate: String?
+    /// The first genre name, e.g. "Horror", when TMDB sends one.
+    let genre: String?
 
     var id: String { (isShow ? "tv-" : "movie-") + String(tmdbID) }
 
@@ -24,6 +26,7 @@ struct DiscoverTitle: Identifiable, Hashable {
         posterPath = m.poster_path; backdropPath = m.backdrop_path
         overview = m.overview ?? ""; rating = m.vote_average
         releaseDate = m.release_date
+        genre = TMDBGenres.first(m.genre_ids, show: false)
     }
 
     init(_ s: TMDBShow) {
@@ -31,7 +34,30 @@ struct DiscoverTitle: Identifiable, Hashable {
         posterPath = s.poster_path; backdropPath = s.backdrop_path
         overview = s.overview ?? ""; rating = s.vote_average
         releaseDate = s.first_air_date
+        genre = TMDBGenres.first(s.genre_ids, show: true)
     }
+}
+
+/// TMDB's fixed genre numbers, as names.
+enum TMDBGenres {
+    static func first(_ ids: [Int]?, show: Bool) -> String? {
+        let table = show ? tv : movie
+        return ids?.lazy.compactMap { table[$0] }.first
+    }
+
+    static let movie: [Int: String] = [
+        28: "Action", 12: "Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+        99: "Documentary", 18: "Drama", 10751: "Family", 14: "Fantasy", 36: "History",
+        27: "Horror", 10402: "Music", 9648: "Mystery", 10749: "Romance",
+        878: "Science Fiction", 10770: "TV Movie", 53: "Thriller", 10752: "War", 37: "Western",
+    ]
+
+    static let tv: [Int: String] = [
+        10759: "Action & Adventure", 16: "Animation", 35: "Comedy", 80: "Crime",
+        99: "Documentary", 18: "Drama", 10751: "Family", 10762: "Kids", 9648: "Mystery",
+        10763: "News", 10764: "Reality", 10765: "Sci-Fi & Fantasy", 10766: "Soap",
+        10767: "Talk", 10768: "War & Politics", 37: "Western",
+    ]
 }
 
 /// A shelf of TMDB titles beyond the core lists: new releases, genres and anime.
@@ -234,7 +260,8 @@ struct DiscoverShelf: View {
     var body: some View {
         if !titles.isEmpty {
             #if os(tvOS)
-            TVShelf(title: title) { tiles }
+            // Home: the focused title opens into a wide picture, with its details under the row.
+            TVSpotlightShelf(title: title, titles: titles, ranked: ranked, onSelect: onSelect)
                 .task(id: titles.count) { prefetchPosters() }
             #else
             Shelf(title: title, destination: destination) { tiles }

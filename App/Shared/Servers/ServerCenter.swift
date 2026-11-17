@@ -57,20 +57,34 @@ final class ServerCenter {
 
     /// Validates reachability, stores the token, then saves.
     func addServer(kind: ServerKind, name: String, urlString: String, token: String) async throws {
-        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespaces)) else {
+        guard let url = URL(string: urlString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw ServerError.invalidURL
         }
         isBusy = true
         lastError = nil
         defer { isBusy = false }
 
-        // Reachability check
-        try await verifyConnection(kind: kind, baseURL: url, token: token)
+        // A playlist link often ends in "?username=…&password=…". That part is the login, so it goes
+        // into the Keychain with the token and only the address without it is saved in the server list.
+        var address = url
+        var secret = token
+        if kind == .nativePlaylist {
+            try NativePlaylistProvider.validateURL(url)
+            let parts = NativePlaylistAccess.split(url, token: token)
+            address = parts.address
+            secret = parts.access.stored
+        } else if kind == .xtream {
+            try XtreamProvider.validateURL(url)
+            address = XtreamProvider.normalize(url)
+        }
 
-        var config = ServerConfig(kind: kind, name: name, baseURL: url)
+        // Reachability check
+        try await verifyConnection(kind: kind, baseURL: address, token: secret)
+
+        var config = ServerConfig(kind: kind, name: name, baseURL: address)
         // Assign priority after existing servers
         config.priority = (servers.map(\.priority).max() ?? 90) + 10
-        try secrets.set(token, for: config.secretKey)
+        try secrets.set(secret, for: config.secretKey)
         servers.append(config)
         save()
     }
@@ -109,17 +123,55 @@ final class ServerCenter {
                 return PlexProvider(config: config, token: token)
             case .jellyfin:
                 return JellyfinProvider(config: config, apiKey: token)
+            case .nativePlaylist:
+                return NativePlaylistProvider(config: config, token: token)
+            case .xtream:
+                return XtreamProvider(config: config, login: token)
             }
+        }
+    }
+
+    /// Enabled Xtream servers with their providers, for the Live TV screen.
+    func xtreamServers() -> [(config: ServerConfig, provider: XtreamProvider)] {
+        servers.compactMap { config in
+            guard config.kind == .xtream, config.isEnabled, let login = secrets.get(config.secretKey) else { return nil }
+            return (config, XtreamProvider(config: config, login: login))
+        }
+    }
+
+    /// A short status line for an Xtream server, e.g. "Connected · 12,345 movies · 2,345 shows".
+    func xtreamSummary(for config: ServerConfig) async -> String {
+        guard config.kind == .xtream, let login = secrets.get(config.secretKey) else { return "" }
+        do {
+            let count = try await XtreamProvider(config: config, login: login).libraryCount()
+            let f = NumberFormatter(); f.numberStyle = .decimal
+            let m = f.string(from: NSNumber(value: count.movies)) ?? "\(count.movies)"
+            let s = f.string(from: NSNumber(value: count.shows)) ?? "\(count.shows)"
+            return "Connected · \(m) movies · \(s) shows"
+        } catch {
+            return "Not connected: \(error.localizedDescription)"
         }
     }
 
     // MARK: - Verification
 
     private func verifyConnection(kind: ServerKind, baseURL: URL, token: String) async throws {
+        if kind == .nativePlaylist {
+            let config = ServerConfig(kind: kind, name: "Playlist", baseURL: baseURL)
+            try await NativePlaylistProvider(config: config, token: token).verify()
+            return
+        }
+        if kind == .xtream {
+            let config = ServerConfig(kind: kind, name: "Xtream", baseURL: baseURL)
+            try await XtreamProvider(config: config, login: token).verify()
+            return
+        }
         // A lightweight probe: Plex → /identity, Jellyfin → /System/Info/Public
         let path: String
         var headers: [String: String]
         switch kind {
+        case .nativePlaylist, .xtream:
+            return
         case .plex:
             path = "/identity"
             headers = ["X-Plex-Token": token, "Accept": "application/json"]

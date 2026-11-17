@@ -400,6 +400,26 @@ public struct TMDBClient {
         return item
     }
 
+    // MARK: - Age rating
+
+    /// The age rating, like "PG-13", "R" or "TV-MA". US first, then Canada. Nil when TMDB has none.
+    public func ageRating(id: Int, isShow: Bool) async throws -> String? {
+        let countries = ["US", "CA"]
+        if isShow {
+            let root = try await get(path: "/tv/\(id)/content_ratings", params: [:], as: TMDBContentRatings.self)
+            for c in countries {
+                if let r = root.results.first(where: { $0.iso_3166_1 == c })?.rating, !r.isEmpty { return r }
+            }
+        } else {
+            let root = try await get(path: "/movie/\(id)/release_dates", params: [:], as: TMDBReleaseDates.self)
+            for c in countries {
+                let dates = root.results.first(where: { $0.iso_3166_1 == c })?.release_dates ?? []
+                if let r = dates.compactMap({ $0.certification }).first(where: { !$0.isEmpty }) { return r }
+            }
+        }
+        return nil
+    }
+
     // MARK: - HTTP
 
     private func get<T: Decodable>(path: String, params: [String: String], as _: T.Type) async throws -> T {
@@ -460,6 +480,7 @@ public struct TMDBMovie: Decodable, Identifiable, Sendable {
     public let backdrop_path: String?
     public let overview: String?
     public let vote_average: Double?
+    public let genre_ids: [Int]?
 
     public var releaseYear: Int? {
         guard let d = release_date, d.count >= 4 else { return nil }
@@ -475,6 +496,7 @@ public struct TMDBShow: Decodable, Identifiable, Sendable {
     public let backdrop_path: String?
     public let overview: String?
     public let vote_average: Double?
+    public let genre_ids: [Int]?
 
     public var firstAirYear: Int? {
         guard let d = first_air_date, d.count >= 4 else { return nil }
@@ -599,4 +621,18 @@ public struct TMDBVideo: Decodable, Sendable, Equatable {
 
 struct TMDBVideoList: Decodable {
     let results: [TMDBVideo]?
+}
+
+struct TMDBContentRatings: Decodable {
+    struct Entry: Decodable { let iso_3166_1: String; let rating: String? }
+    let results: [Entry]
+}
+
+struct TMDBReleaseDates: Decodable {
+    struct Entry: Decodable {
+        struct Release: Decodable { let certification: String? }
+        let iso_3166_1: String
+        let release_dates: [Release]
+    }
+    let results: [Entry]
 }
