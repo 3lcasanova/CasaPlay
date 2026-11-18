@@ -131,6 +131,9 @@ struct NextEpisodeTarget: Identifiable {
     let id = UUID()
     let request: ContentRequest
     let episodeID: UUID
+    var season = 0
+    var number = 0
+    var name = ""
 }
 
 @Observable
@@ -156,6 +159,8 @@ final class AppState {
     var playing: MediaItem?
     /// The next episode, found when one ends. The root view opens its stream list and plays the best stream by itself.
     var nextEpisode: NextEpisodeTarget?
+    /// Shown over the player once an episode ends, with a countdown the viewer can cancel.
+    var upNext: NextEpisodeTarget?
     /// The compatibility engine (Aether) is on, so MKV and other files Apple's player can't open still play.
     var router = PlaybackRouter(compatibilityEngineEnabled: true)
     /// Set when the user picks a torrent stream; clears after the sheet is dismissed.
@@ -371,7 +376,7 @@ final class AppState {
     /// An episode ended: mark it watched, find the next one (the next in the season, else the first of the next
     /// season) and queue it. Does nothing for films, or on the last episode that has aired.
     func playNextEpisode(after item: MediaItem) {
-        guard item.kind == .episode, !advancing,
+        guard item.kind == .episode, !advancing, upNext == nil,
               let imdb = item.parentIMDbID, let season = item.seasonNumber, let number = item.episodeNumber else { return }
         advancing = true
         markEpisodeWatched(id: item.id)
@@ -386,27 +391,40 @@ final class AppState {
             let episodeID = registerEpisode(show: base, season: next.season, episode: next.number, runtimeMinutes: next.runtime)
             let request = ContentRequest.episode(seriesID: imdb, title: ref.title, season: next.season,
                                                  episode: next.number, year: ref.year)
-            // Close the player first; a sheet can't open while it is still on screen.
-            playing = nil
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            nextEpisode = NextEpisodeTarget(request: request, episodeID: episodeID)
+            upNext = NextEpisodeTarget(request: request, episodeID: episodeID, season: next.season,
+                                       number: next.number, name: next.name)
         }
     }
 
+    /// The countdown ran out, or the viewer pressed Next Episode.
+    func startUpNext() {
+        guard let target = upNext else { return }
+        upNext = nil
+        Task { @MainActor in
+            // Close the player first; a sheet can't open while it is still on screen.
+            playing = nil
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            nextEpisode = target
+        }
+    }
+
+    /// The viewer cancelled: the player stays on the finished episode.
+    func cancelUpNext() { upNext = nil }
+
     private static func nextEpisodeInfo(tmdb: TMDBClient, showID: Int, season: Int, after number: Int,
-                                        seasons: Int?) async -> (season: Int, number: Int, runtime: Int?)? {
+                                        seasons: Int?) async -> (season: Int, number: Int, runtime: Int?, name: String)? {
         func aired(_ e: TMDBEpisode) -> Bool {
             guard let date = e.air_date, !date.isEmpty else { return true }
             return date <= ISO8601DateFormatter().string(from: Date()).prefix(10)
         }
         if let current = try? await tmdb.seasonDetail(showID: showID, season: season),
            let e = (current.episodes ?? []).filter({ $0.episode_number > number }).min(by: { $0.episode_number < $1.episode_number }) {
-            return aired(e) ? (season, e.episode_number, e.runtime) : nil
+            return aired(e) ? (season, e.episode_number, e.runtime, e.name) : nil
         }
         if let seasons, season >= seasons { return nil }
         if let following = try? await tmdb.seasonDetail(showID: showID, season: season + 1),
            let e = (following.episodes ?? []).filter({ $0.episode_number >= 1 }).min(by: { $0.episode_number < $1.episode_number }) {
-            return aired(e) ? (season + 1, e.episode_number, e.runtime) : nil
+            return aired(e) ? (season + 1, e.episode_number, e.runtime, e.name) : nil
         }
         return nil
     }

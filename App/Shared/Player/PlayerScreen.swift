@@ -65,7 +65,15 @@ struct PlayerScreen: View {
             }
 
             overlayLayout(ownPlayer: ownPlayer)
+
+            if let target = app.upNext {
+                UpNextCard(target: target,
+                           onPlay: { app.startUpNext() },
+                           onCancel: { app.cancelUpNext() })
+                    .transition(.opacity)
+            }
         }
+        .animation(.easeOut(duration: 0.2), value: app.upNext?.id)
     }
 
     // MARK: Overlay
@@ -407,5 +415,62 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             self.player = nil
             self.tokens = []
         }
+    }
+}
+
+
+// MARK: - Next episode
+
+/// Shown when an episode ends: the next one starts after a short countdown unless the viewer cancels.
+private struct UpNextCard: View {
+    let target: NextEpisodeTarget
+    let onPlay: () -> Void
+    let onCancel: () -> Void
+
+    @State private var seconds = 8
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Up next")
+                        .font(.casa(13, weight: .semibold))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                    Text(verbatim: "S\(target.season) · E\(target.number)" + (target.name.isEmpty ? "" : " · \(target.name)"))
+                        .font(.casa(18, weight: .bold))
+                        .foregroundStyle(Color.white)
+                        .lineLimit(2)
+                    Text("Playing in \(seconds)")
+                        .font(.casa(14))
+                        .foregroundStyle(Color.white.opacity(0.9))
+                    HStack(spacing: 12) {
+                        Button(action: onPlay) { Text("Next Episode").frame(minWidth: 140) }
+                            .focused($focused)
+                        Button(action: onCancel) { Text("Cancel") }
+                    }
+                }
+                .padding(24)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .focusSection()
+            }
+            .padding(.horizontal, Platform.isTV ? 80 : 20)
+            .padding(.bottom, Platform.isTV ? 120 : 60)
+        }
+        .onAppear { focused = true }
+        .task(id: target.id) {
+            seconds = 8
+            while seconds > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                seconds -= 1
+            }
+            onPlay()
+        }
+        #if os(tvOS)
+        .onExitCommand(perform: onCancel)
+        #endif
     }
 }
