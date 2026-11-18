@@ -37,7 +37,8 @@ struct PlayerScreen: View {
                         onProgress: { seconds in
                             app.updateProgress(id: item.id, seconds: seconds)
                         },
-                        streamHeaders: item.streamHeaders
+                        streamHeaders: item.streamHeaders,
+                        onEnded: { app.playNextEpisode(after: item) }
                     )
                     .ignoresSafeArea()
                 } else {
@@ -193,6 +194,8 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
     let onSelectSubtitle: (String?) -> Void
     let onProgress: (TimeInterval) -> Void
     var streamHeaders: [String: String]? = nil
+    /// The video played to its end.
+    var onEnded: (() -> Void)? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onProgress: onProgress)
@@ -266,6 +269,8 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
         ) { time in
             coordinator.tick(time)
         }
+        coordinator.onEnded = onEnded
+        coordinator.watchForEnd(of: playerItem)
         coordinator.attach(player: player, tokens: [progressToken, subtitleToken])
         coordinator.watchForFailure(of: playerItem, in: controller, isTorrent: url.scheme == TorrentResourceLoader.scheme)
 
@@ -275,6 +280,7 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
         context.coordinator.onProgress = onProgress
+        context.coordinator.onEnded = onEnded
         apply(to: uiViewController, coordinator: context.coordinator)
     }
 
@@ -315,6 +321,8 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
 
     final class Coordinator {
         var onProgress: (TimeInterval) -> Void
+        var onEnded: (() -> Void)?
+        private var endObserver: NSObjectProtocol?
         let overlay = SubtitleOverlayModel()
         var torrentLoader: TorrentResourceLoader?
         private var player: AVPlayer?
@@ -363,6 +371,12 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             }
         }
 
+        func watchForEnd(of item: AVPlayerItem) {
+            endObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main
+            ) { [weak self] _ in self?.onEnded?() }
+        }
+
         func report(_ time: CMTime) {
             let seconds = time.seconds
             guard seconds.isFinite, seconds > 0 else { return }
@@ -388,6 +402,8 @@ struct AVPlayerControllerView: UIViewControllerRepresentable {
             statusObservation = nil
             if let failureObserver { NotificationCenter.default.removeObserver(failureObserver) }
             failureObserver = nil
+            if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+            endObserver = nil
             self.player = nil
             self.tokens = []
         }

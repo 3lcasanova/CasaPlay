@@ -112,6 +112,9 @@ struct AetherPlayerScreen: View {
             hideTask?.cancel()
             model.stop()
         }
+        .onChange(of: model.phase) { _, phase in
+            if phase == .ended { app.playNextEpisode(after: item) }
+        }
         .onChange(of: app.activeSubtitle(for: item.id)?.id) { _, newValue in
             syncSubtitles()
             // A downloaded file that starts showing must not double up with a track inside the video.
