@@ -11,6 +11,8 @@ struct StreamSourcesView: View {
     /// True when the viewer pressed Resume: the stream the title was last played from starts by itself, and the
     /// list only shows if that stream can't be found.
     var resumeLastStream = false
+    /// The next episode after one ends: once the search finishes, the best stream plays without anyone choosing.
+    var autoPlayBest = false
     @Environment(ExtensionCenter.self) private var center
     @Environment(AppState.self) private var app
     @Environment(TorrentCenter.self) private var torrents
@@ -529,6 +531,10 @@ struct StreamSourcesView: View {
         if resuming {
             resuming = false
             resumeMissed = true
+        }
+        if autoPlayBest, !Task.isCancelled, let best = results.bestChoice {
+            autoPlayBest = false
+            play(best)
         }
     }
 

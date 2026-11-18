@@ -23,6 +23,10 @@ struct RootView: View {
             .fullScreenCover(item: $state.playing) { item in
                 PlayerScreen(item: item)
             }
+            // The next episode: its streams are searched and the best one plays by itself.
+            .sheet(item: $state.nextEpisode) { target in
+                StreamSourcesView(request: target.request, libraryItemID: target.episodeID, autoPlayBest: true)
+            }
             .task { torrents.start() }
             .onOpenURL { app.handleDeepLink($0) }
             .onChange(of: scenePhase) { _, phase in
