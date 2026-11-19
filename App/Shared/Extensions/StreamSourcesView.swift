@@ -13,6 +13,7 @@ struct StreamSourcesView: View {
     var resumeLastStream = false
     /// The next episode after one ends: once the search finishes, the best stream plays without anyone choosing.
     var autoPlayBest = false
+    @State private var didAutoPlay = false
     @Environment(ExtensionCenter.self) private var center
     @Environment(AppState.self) private var app
     @Environment(TorrentCenter.self) private var torrents
@@ -532,8 +533,8 @@ struct StreamSourcesView: View {
             resuming = false
             resumeMissed = true
         }
-        if autoPlayBest, !Task.isCancelled, let best = results.bestChoice {
-            autoPlayBest = false
+        if autoPlayBest, !didAutoPlay, !Task.isCancelled, let best = results.bestChoice {
+            didAutoPlay = true
             play(best)
         }
     }

@@ -454,7 +454,7 @@ private struct UpNextCard: View {
                 }
                 .padding(24)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .focusSection()
+                .tvFocusSection()
             }
             .padding(.horizontal, Platform.isTV ? 80 : 20)
             .padding(.bottom, Platform.isTV ? 120 : 60)
