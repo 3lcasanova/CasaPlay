@@ -23,6 +23,8 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
+    # Newer Xcode versions no longer support the old single-headermap style.
+    ALWAYS_SEARCH_USER_PATHS: NO
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
     ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
