@@ -9,5 +9,9 @@ OMDB_API_KEY =
 OPENSUBTITLES_API_KEY =
 // Your own add-on links (for example TorBox MediaFusion or Absolute Cinema). Saved by Scripts/setup-addon.sh.
 PERSONAL_ADDON_URL =
+// Your own IPTV (Xtream Codes) login. Saved by Scripts/setup-xtream.sh.
+XTREAM_SERVER =
+XTREAM_USERNAME =
+XTREAM_PASSWORD =
 
 #include? "Secrets.xcconfig"

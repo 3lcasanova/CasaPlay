@@ -18,6 +18,7 @@ struct CasaPlayApp: App {
                 .environment(ServerCenter.shared)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
+                .task { await ServerCenter.shared.installPersonalServers() }
                 .task {
                     #if os(tvOS)
                     // Each time the app opens, ask tvOS to refresh the Top Shelf above the app row.

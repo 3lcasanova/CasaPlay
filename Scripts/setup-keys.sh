@@ -1,16 +1,16 @@
 #!/bin/bash
 # CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 #
-# Tests the TMDB, TheTVDB and OpenSubtitles keys against the live services and saves
+# Tests the TMDB, TheTVDB, OMDb and OpenSubtitles keys against the live services and saves
 # the ones that work into Config/Secrets.xcconfig, which git ignores.
 #
 # For each service:
 #   1. A key already in Secrets.xcconfig is tested first and kept if it works.
 #   2. Otherwise the key given on the command line (environment) is tested, and saved if it works.
-# Other lines in Secrets.xcconfig (for example the OMDb key) are left alone.
+# Other lines in Secrets.xcconfig (add-on links, the IPTV login) are left alone.
 # Keys are never printed.
 #
-#   TMDB_API_KEY=... TVDB_API_KEY=... OPENSUBTITLES_API_KEY=... bash scripts/setup-keys.sh
+#   TMDB_API_KEY=... TVDB_API_KEY=... OMDB_API_KEY=... OPENSUBTITLES_API_KEY=... bash Scripts/setup-keys.sh
 
 cd "$(dirname "$0")/.." || exit 1
 FILE="Config/Secrets.xcconfig"
@@ -38,6 +38,10 @@ test_tmdb() {
 
 test_tvdb() {
   status -X POST -H "Content-Type: application/json" -d "{\"apikey\":\"$1\"}" "https://api4.thetvdb.com/v4/login"
+}
+
+test_omdb() {
+  status "https://www.omdbapi.com/?i=tt3896198&apikey=$1"
 }
 
 test_opensubtitles() {
@@ -88,11 +92,12 @@ check_one() {
 failed=0
 check_one "TMDB"          TMDB_API_KEY          test_tmdb          "${TMDB_API_KEY:-}"          || failed=1
 check_one "TheTVDB"       TVDB_API_KEY          test_tvdb          "${TVDB_API_KEY:-}"          || failed=1
+check_one "OMDb"          OMDB_API_KEY          test_omdb          "${OMDB_API_KEY:-}"          || failed=1
 check_one "OpenSubtitles" OPENSUBTITLES_API_KEY test_opensubtitles "${OPENSUBTITLES_API_KEY:-}" || failed=1
 
 echo
 if [ "$failed" = "0" ]; then
-  echo "All three keys work. Rebuild the app to pick them up."
+  echo "All four keys work. Rebuild the app to pick them up."
 else
   echo "Some keys need attention (see above). The app still builds, and you can paste keys in Profile › Online services."
 fi

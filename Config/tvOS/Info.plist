@@ -53,6 +53,12 @@
 	<string>$(OPENSUBTITLES_API_KEY)</string>
 	<key>PersonalAddonURL</key>
 	<string>$(PERSONAL_ADDON_URL)</string>
+	<key>PersonalXtreamServer</key>
+	<string>$(XTREAM_SERVER)</string>
+	<key>PersonalXtreamUsername</key>
+	<string>$(XTREAM_USERNAME)</string>
+	<key>PersonalXtreamPassword</key>
+	<string>$(XTREAM_PASSWORD)</string>
 	<key>TMDBAPIKey</key>
 	<string>$(TMDB_API_KEY)</string>
 	<key>TVDBAPIKey</key>

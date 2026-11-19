@@ -4,6 +4,7 @@
 // Lives as a @MainActor singleton; inject via `.environment(ServerCenter.shared)`.
 
 import SwiftUI
+import CryptoKit
 import CasaPlayKit
 
 @MainActor
@@ -87,6 +88,32 @@ final class ServerCenter {
         try secrets.set(secret, for: config.secretKey)
         servers.append(config)
         save()
+    }
+
+    /// Adds the IPTV login saved in Config/Secrets.xcconfig (Scripts/setup-xtream.sh) once, so nothing has
+    /// to be typed on Apple TV. Removing it in the app keeps it removed; a failure (no network at launch) is
+    /// retried on the next launch; changing the saved login swaps the server over to the new one.
+    func installPersonalServers() async {
+        func setting(_ key: String) -> String { Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "" }
+        guard let personal = PersonalXtream(server: setting("PersonalXtreamServer"),
+                                            username: setting("PersonalXtreamUsername"),
+                                            password: setting("PersonalXtreamPassword")) else { return }
+        let fingerprint = [personal.server.absoluteString, personal.login.username, personal.login.password]
+            .joined(separator: "\n")
+        let digest = SHA256.hash(data: Data(fingerprint.utf8)).prefix(8)
+            .map { String(format: "%02x", $0) }.joined()
+        let doneKey = "personalXtream." + digest
+        guard !UserDefaults.standard.bool(forKey: doneKey) else { return }
+
+        let earlier = servers.first { $0.kind == .xtream && $0.baseURL == personal.server }?.id
+        do {
+            try await addServer(kind: .xtream, name: "IPTV", urlString: personal.server.absoluteString,
+                                token: personal.login.stored)
+            UserDefaults.standard.set(true, forKey: doneKey)
+            if let earlier { remove(earlier) }
+        } catch {
+            // Left unmarked so the next launch tries again.
+        }
     }
 
     func remove(_ id: UUID) {
