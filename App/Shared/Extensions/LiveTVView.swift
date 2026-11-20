@@ -120,7 +120,7 @@ final class LiveTVModel {
     }
 
     /// The Xtream server a channel belongs to: the saved one for a favorite, else the list on screen.
-    private func serverID(for channel: StremioMetaPreview) -> String? {
+    func serverID(for channel: StremioMetaPreview) -> String? {
         favorites.first { $0.id == channel.id }?.addonID ?? selected?.addonID
     }
 
@@ -672,6 +672,10 @@ struct LiveTVView: View {
             streamHeaders: option.headers.isEmpty ? nil : option.headers
         )
         app.play(item)
+        if let addonID = model.serverID(for: channel) {
+            RecentChannels.shared.record(FavoriteChannel(
+                id: channel.id, name: channel.name, logo: channel.logo ?? channel.poster, addonID: addonID))
+        }
     }
 }
 

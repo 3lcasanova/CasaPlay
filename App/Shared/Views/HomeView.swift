@@ -32,7 +32,7 @@ struct HomeView: View {
         let feed = app.discover
 
         NavigationStack(path: $path) {
-            TVHome(path: $path, opener: opener, isOpening: isOpening, message: openError ?? feed.error)
+            KairoHome(path: $path, opener: opener, isOpening: isOpening, message: openError ?? feed.error)
                 .task(id: app.tmdbClient == nil) {
                     await feed.loadIfNeeded(app.tmdbClient)
                 }

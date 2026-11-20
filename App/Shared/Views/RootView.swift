@@ -49,13 +49,7 @@ struct RootView: View {
     @ViewBuilder
     private var navigation: some View {
         #if os(tvOS)
-        // Like the Apple TV app: a sidebar on the left (Search, Home, Library and so on) that folds into a
-        // small tab at the top-left while you browse. Before tvOS 18 it is the plain tab bar.
-        if #available(tvOS 18.0, *) {
-            tvSidebarTabs
-        } else {
-            tabs
-        }
+        tvNavigation
         #else
         if sizeClass == .regular {
             if #available(iOS 18.0, *) {
@@ -70,29 +64,14 @@ struct RootView: View {
     }
 
     #if os(tvOS)
-    @available(tvOS 18.0, *)
-    private var tvSidebarTabs: some View {
-        TabView(selection: selection) {
-            tvTab(.home)
-            tvTab(.movies)
-            tvTab(.series)
-            tvTab(.iptv)
-            tvTab(.news)
-            tvTab(.sports)
-            TabSection("More") {
-                tvTab(.extensions)
-                tvTab(.servers)
-                tvTab(.profile)
-            }
+    /// The Kairo layout: a row of pills across the top, and the current screen under it.
+    private var tvNavigation: some View {
+        VStack(spacing: 0) {
+            KairoTopBar(selection: selection)
+            sectionView(app.selectedSection)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .tabViewStyle(.sidebarAdaptable)
-    }
-
-    @available(tvOS 18.0, *)
-    private func tvTab(_ section: AppSection) -> some TabContent<AppSection> {
-        Tab(section.title, systemImage: section.systemImage, value: section) {
-            sectionView(section)
-        }
+        .background(KairoBackground())
     }
     #endif
 
