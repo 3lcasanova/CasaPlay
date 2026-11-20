@@ -299,3 +299,65 @@ final class ShowTrackingTests: XCTestCase {
         XCTAssertEqual(ordered, [fresh, soon, later, none])
     }
 }
+
+// MARK: - Program guide
+
+final class XtreamEPGTests: XCTestCase {
+    private let t0: TimeInterval = 1_700_000_000
+
+    private func guide() throws -> [EPGProgram] {
+        let sample = """
+        {"epg_listings":[
+          {"id":"1","title":"VGhlIE5ld3M=","description":"RGFpbHkgbmV3cyBhdCB0ZW4=",
+           "start_timestamp":"\(Int(t0))","stop_timestamp":"\(Int(t0) + 3600)"},
+          {"id":"2","title":"RGFpbHkgbmV3cyBhdCB0ZW4=","description":"",
+           "start_timestamp":\(Int(t0) + 3600),"stop_timestamp":"\(Int(t0) + 7200)"},
+          {"id":"3","title":"Late Movie","start":"2026-11-20 12:00:00","end":"2026-11-20 14:00:00"},
+          {"id":"4","title":"","start_timestamp":"\(Int(t0))","stop_timestamp":"\(Int(t0) + 60)"},
+          {"id":"5","title":"VGhlIE5ld3M=","start_timestamp":"\(Int(t0))","stop_timestamp":"\(Int(t0))"}
+        ]}
+        """
+        return XtreamEPG.parse(try JSONSerialization.jsonObject(with: Data(sample.utf8)))
+    }
+
+    func testTitlesAreDecodedAndBadEntriesSkipped() throws {
+        let programs = try guide()
+        XCTAssertEqual(programs.map(\.title), ["The News", "Daily news at ten", "Late Movie"])
+        XCTAssertEqual(programs[0].detail, "Daily news at ten")
+        XCTAssertEqual(programs[0].start, Date(timeIntervalSince1970: t0))
+        XCTAssertEqual(programs[1].start, Date(timeIntervalSince1970: t0 + 3600), "numeric timestamps work too")
+    }
+
+    func testPlainTextTitleAndStringTimesAreAccepted() throws {
+        let late = try XCTUnwrap(guide().first { $0.title == "Late Movie" })
+        XCTAssertEqual(late.start, utc("2026-11-20T12:00:00Z"))
+        XCTAssertEqual(late.end, utc("2026-11-20T14:00:00Z"))
+    }
+
+    func testNowAndNext() throws {
+        let programs = try guide()
+        let during = XtreamEPG.nowNext(programs, at: Date(timeIntervalSince1970: t0 + 5400))
+        XCTAssertEqual(during.now?.title, "Daily news at ten")
+        XCTAssertEqual(during.next?.title, "Late Movie")
+
+        let before = XtreamEPG.nowNext(programs, at: Date(timeIntervalSince1970: t0 - 600))
+        XCTAssertNil(before.now)
+        XCTAssertEqual(before.next?.title, "The News")
+
+        let after = XtreamEPG.nowNext(programs, at: utc("2027-01-01T00:00:00Z"))
+        XCTAssertNil(after.now)
+        XCTAssertNil(after.next)
+    }
+
+    func testProgress() throws {
+        let news = try XCTUnwrap(guide().first { $0.title == "The News" })
+        XCTAssertEqual(news.progress(at: Date(timeIntervalSince1970: t0 + 1800)), 0.5, accuracy: 0.001)
+        XCTAssertEqual(news.progress(at: Date(timeIntervalSince1970: t0 - 10)), 0)
+        XCTAssertEqual(news.progress(at: Date(timeIntervalSince1970: t0 + 9999)), 1)
+    }
+
+    func testGarbageReadsAsNoPrograms() {
+        XCTAssertTrue(XtreamEPG.parse("nope").isEmpty)
+        XCTAssertTrue(XtreamEPG.parse(["epg_listings": "x"]).isEmpty)
+    }
+}

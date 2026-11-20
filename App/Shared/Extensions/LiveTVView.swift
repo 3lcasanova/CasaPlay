@@ -37,6 +37,13 @@ final class LiveTVModel {
     private(set) var showAllCatalogs: Bool
     var searchText = ""
 
+    /// What is on now and next, by channel id. Filled in as channel cards come on screen.
+    private(set) var guide: [String: NowNext] = [:]
+    private(set) var favorites: [FavoriteChannel] = []
+    private(set) var showFavorites = false
+    @ObservationIgnored private var guideAsked: [String: Date] = [:]
+    @ObservationIgnored private var guideActive = 0
+
     @ObservationIgnored private var clients: [String: StremioClient] = [:]
     /// Xtream Codes servers shown as channel lists, keyed by their source addonID.
     @ObservationIgnored private var xtream: [String: XtreamProvider] = [:]
@@ -47,10 +54,15 @@ final class LiveTVModel {
     @ObservationIgnored private var appliedSearch = ""
 
     private static let showAllKey = "iptv.showAllCatalogs"
+    private static let favoritesKey = "iptv.favoriteChannels"
     static let showsAddonChannels = false
 
     init() {
         showAllCatalogs = UserDefaults.standard.bool(forKey: Self.showAllKey)
+        if let data = UserDefaults.standard.data(forKey: Self.favoritesKey),
+           let saved = try? JSONDecoder().decode([FavoriteChannel].self, from: data) {
+            favorites = saved
+        }
     }
 
     // MARK: What is on screen
@@ -82,7 +94,53 @@ final class LiveTVModel {
 
     /// The channels to draw. A catalog without server-side search is filtered here.
     var visibleChannels: [StremioMetaPreview] {
-        canSearchOnServer ? channels : LiveTV.filter(channels, matching: searchText)
+        if showFavorites { return LiveTV.filter(favorites.compactMap(\.preview), matching: searchText) }
+        return canSearchOnServer ? channels : LiveTV.filter(channels, matching: searchText)
+    }
+
+    // MARK: Favorites and the guide
+
+    func setShowFavorites(_ on: Bool) { showFavorites = on }
+
+    func isFavorite(_ channel: StremioMetaPreview) -> Bool {
+        favorites.contains { $0.id == channel.id }
+    }
+
+    /// Adds or removes a channel. Only channels from an Xtream server can be saved.
+    func toggleFavorite(_ channel: StremioMetaPreview) {
+        if let index = favorites.firstIndex(where: { $0.id == channel.id }) {
+            favorites.remove(at: index)
+        } else if let addonID = selected?.addonID, xtream[addonID] != nil {
+            let logo = (channel.logo ?? channel.poster)
+            favorites.append(FavoriteChannel(id: channel.id, name: channel.name, logo: logo, addonID: addonID))
+        }
+        if let data = try? JSONEncoder().encode(favorites) {
+            UserDefaults.standard.set(data, forKey: Self.favoritesKey)
+        }
+    }
+
+    /// The Xtream server a channel belongs to: the saved one for a favorite, else the list on screen.
+    private func serverID(for channel: StremioMetaPreview) -> String? {
+        favorites.first { $0.id == channel.id }?.addonID ?? selected?.addonID
+    }
+
+    /// Looks up what is on a channel now and next. At most four lookups run at once, and a channel is
+    /// asked again no sooner than five minutes later.
+    func loadGuide(for channel: StremioMetaPreview) async {
+        guard let addonID = serverID(for: channel), let provider = xtream[addonID] else { return }
+        if let asked = guideAsked[channel.id], Date().timeIntervalSince(asked) < 300 { return }
+        while guideActive >= 4 {
+            do { try await Task.sleep(nanoseconds: 150_000_000) } catch { return }
+        }
+        guard guideAsked[channel.id].map({ Date().timeIntervalSince($0) >= 300 }) ?? true else { return }
+        guideAsked[channel.id] = Date()
+        guideActive += 1
+        defer { guideActive -= 1 }
+        do {
+            guide[channel.id] = try await provider.nowNext(for: channel.id)
+        } catch {
+            guideAsked[channel.id] = nil
+        }
     }
 
     // MARK: Finding the channel lists
@@ -258,11 +316,11 @@ final class LiveTVModel {
     /// Asks the add-on that listed the channel, then any other add-on that answers for it,
     /// for playable links.
     func resolve(_ channel: StremioMetaPreview) async throws -> Resolution {
-        guard let source = selected else { return Resolution(options: [], onlyUnplayable: false) }
-        if let provider = xtream[source.addonID] {
+        if let addonID = serverID(for: channel), let provider = xtream[addonID] {
             let options = provider.liveOption(for: channel.id, title: channel.name).map { [$0] } ?? []
             return Resolution(options: options, onlyUnplayable: false)
         }
+        guard let source = selected else { return Resolution(options: [], onlyUnplayable: false) }
         let type = channel.type.isEmpty ? source.catalog.type : channel.type
 
         var order: [String] = []
@@ -343,7 +401,7 @@ struct LiveTVView: View {
             }
             .tvFullWidth()
             .screenBackground()
-            .scrollingScreenTitle("IPTV")
+            .scrollingScreenTitle("TV & IPTV")
             .searchable(text: $searchModel.searchText)
             .task(id: model.searchText) {
                 do { try await Task.sleep(nanoseconds: 450_000_000) } catch { return }
@@ -373,7 +431,11 @@ struct LiveTVView: View {
         } else if model.sources.isEmpty {
             emptyState
         } else {
-            pickers
+            modeRow
+                .tvFocusSection()
+            if !model.showFavorites {
+                pickers
+            }
 
             if let notice {
                 Text(notice)
@@ -403,6 +465,16 @@ struct LiveTVView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, Metrics.sectionSpacing)
+    }
+
+    /// All channels, or just the ones you starred. Press and hold a channel to star it.
+    private var modeRow: some View {
+        chipRow {
+            ChipButton(title: "All Channels", isSelected: !model.showFavorites) { model.setShowFavorites(false) }
+            ChipButton(title: "Favorites (\(model.favorites.count))", isSelected: model.showFavorites) {
+                model.setShowFavorites(true)
+            }
+        }
     }
 
     /// Add-ons, then the add-on's lists, then genres, each as a row of colourful tiles.
@@ -488,7 +560,9 @@ struct LiveTVView: View {
             ContentUnavailableView(
                 "No channels found",
                 systemImage: "tv",
-                description: Text(model.searchText.isEmpty ? Self.emptyListNote(model.selected?.addonName) : "Try a different search or filter.")
+                description: Text(model.showFavorites
+                                  ? "Press and hold a channel, then choose Add to Favorites."
+                                  : (model.searchText.isEmpty ? Self.emptyListNote(model.selected?.addonName) : "Try a different search or filter."))
             )
             .frame(maxWidth: .infinity)
             .padding(.top, Metrics.sectionSpacing)
@@ -496,10 +570,18 @@ struct LiveTVView: View {
             LazyVGrid(columns: columns, alignment: .leading, spacing: PremiumGrid.rowSpacing) {
                 ForEach(channels) { channel in
                     Button { open(channel) } label: {
-                        ChannelCard(channel: channel, isOpening: openingID == channel.id, isLive: model.selectedIsLive)
+                        ChannelCard(channel: channel, isOpening: openingID == channel.id, isLive: model.selectedIsLive,
+                                    nowNext: model.guide[channel.id], isFavorite: model.isFavorite(channel))
                     }
                     .premiumCardStyle()
                     .disabled(openingID != nil)
+                    .contextMenu {
+                        Button(model.isFavorite(channel) ? "Remove from Favorites" : "Add to Favorites",
+                               systemImage: model.isFavorite(channel) ? "star.slash" : "star") {
+                            model.toggleFavorite(channel)
+                        }
+                    }
+                    .task { await model.loadGuide(for: channel) }
                     .onAppear {
                         if channel.id == channels.last?.id { Task { await model.loadMore() } }
                     }
@@ -600,6 +682,8 @@ private struct ChannelCard: View {
     let isOpening: Bool
     /// A channel gets a wide card and the LIVE tag. A film or show (from another catalog) gets a poster, no tag.
     var isLive = true
+    var nowNext: NowNext?
+    var isFavorite = false
     @Environment(\.cardFocused) private var focused
 
     private var shape: RoundedRectangle {
@@ -636,6 +720,14 @@ private struct ChannelCard: View {
             .overlay(alignment: .topLeading) {
                 if isLive { liveTag }
             }
+            .overlay(alignment: .topTrailing) {
+                if isFavorite {
+                    Image(systemName: "star.fill")
+                        .font(.casa(12))
+                        .foregroundStyle(Theme.accent)
+                        .padding(Metrics.s(7))
+                }
+            }
             .clipShape(shape)
             .overlay { shape.strokeBorder(Color.white, lineWidth: focused ? Metrics.s(2.6) : 0) }
 
@@ -645,6 +737,24 @@ private struct ChannelCard: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
+
+            if let now = nowNext?.now {
+                VStack(spacing: Metrics.s(3)) {
+                    Text(now.title)
+                        .font(.casa(11, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                        .lineLimit(1)
+                    GuideProgress(value: now.progress(at: Date()))
+                        .frame(height: Metrics.s(3))
+                    if let next = nowNext?.next {
+                        Text("Next: " + next.title + " · " + next.start.formatted(date: .omitted, time: .shortened))
+                            .font(.casa(10))
+                            .foregroundStyle(Theme.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -664,5 +774,35 @@ private struct ChannelCard: View {
         Image(systemName: "tv")
             .font(.casa(26))
             .foregroundStyle(Theme.textSecondary)
+    }
+}
+
+/// A thin bar showing how far through the program you are.
+private struct GuideProgress: View {
+    let value: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color.white.opacity(0.18))
+                Capsule().fill(Theme.accent).frame(width: proxy.size.width * min(max(value, 0), 1))
+            }
+        }
+    }
+}
+
+/// A channel you starred. Saved on this device.
+struct FavoriteChannel: Codable, Identifiable, Equatable {
+    let id: String
+    let name: String
+    let logo: String?
+    let addonID: String
+
+    /// The channel as the list draws it.
+    var preview: StremioMetaPreview? {
+        var json: [String: Any] = ["id": id, "type": "tv", "name": name]
+        if let logo { json["logo"] = logo }
+        guard let data = try? JSONSerialization.data(withJSONObject: json) else { return nil }
+        return try? JSONDecoder().decode(StremioMetaPreview.self, from: data)
     }
 }
