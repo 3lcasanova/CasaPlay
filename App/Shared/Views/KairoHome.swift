@@ -7,6 +7,7 @@
 #if os(tvOS)
 
 import SwiftUI
+import AVKit
 import CasaPlayKit
 
 /// What the top area is showing.
@@ -38,6 +39,7 @@ struct KairoHome: View {
     let message: String?
 
     @State private var focusedHero: KairoHero?
+    @State private var livePlayer: AVPlayer?
 
     var body: some View {
         let hero = focusedHero ?? defaultHero
@@ -68,6 +70,41 @@ struct KairoHome: View {
             }
         }
         .task { await recent.refreshGuide() }
+        .onChange(of: focusedHero) { _, newHero in
+            updateLivePreview(for: newHero)
+        }
+        .onDisappear { stopLivePlayer() }
+    }
+
+    // MARK: Live preview
+
+    private func updateLivePreview(for hero: KairoHero?) {
+        let h = hero ?? defaultHero
+        if case .channel(let channel) = h.source {
+            if let (url, headers) = recent.streamOption(for: channel) {
+                startLivePlayer(url: url, headers: headers)
+            } else {
+                stopLivePlayer()
+            }
+        } else {
+            stopLivePlayer()
+        }
+    }
+
+    private func startLivePlayer(url: URL, headers: [String: String]) {
+        stopLivePlayer()
+        var options: [String: Any] = [:]
+        if !headers.isEmpty { options["AVURLAssetHTTPHeaderFieldsKey"] = headers }
+        let asset = AVURLAsset(url: url, options: options.isEmpty ? nil : options)
+        let player = AVPlayer(playerItem: AVPlayerItem(asset: asset))
+        player.isMuted = true
+        player.play()
+        livePlayer = player
+    }
+
+    private func stopLivePlayer() {
+        livePlayer?.pause()
+        livePlayer = nil
     }
 
     // MARK: Hero
@@ -167,8 +204,10 @@ struct KairoHome: View {
 
     private func previewCard(_ hero: KairoHero) -> some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Kairo.card.opacity(0.6))
-            if let url = hero.imageURL {
+            RoundedRectangle(cornerRadius: 26, style: .continuous).fill(Kairo.card)
+            if case .channel = hero.source, let player = livePlayer {
+                LivePreviewLayer(player: player)
+            } else if let url = hero.imageURL {
                 CachedAsyncImage(url: url) { phase in
                     if let image = phase.image {
                         if hero.imageIsLogo {
@@ -182,7 +221,7 @@ struct KairoHome: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
         .overlay(alignment: .topTrailing) {
-            if hero.imageIsLogo {
+            if case .channel = hero.source {
                 Text("LIVE")
                     .font(.system(size: 18, weight: .heavy))
                     .foregroundStyle(.white)
@@ -333,6 +372,31 @@ struct KairoPoster: View {
         }
     }
 }
+
+// MARK: - Live preview
+
+/// A muted AVPlayer rendered directly into a layer — no controls, no chrome.
+private struct LivePreviewLayer: UIViewRepresentable {
+    let player: AVPlayer
+
+    func makeUIView(context: Context) -> _PlayerHostView {
+        let v = _PlayerHostView()
+        v.playerLayer.player = player
+        v.playerLayer.videoGravity = .resizeAspectFill
+        return v
+    }
+
+    func updateUIView(_ v: _PlayerHostView, context: Context) {
+        v.playerLayer.player = player
+    }
+}
+
+private final class _PlayerHostView: UIView {
+    override class var layerClass: AnyClass { AVPlayerLayer.self }
+    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+}
+
+// MARK: -
 
 /// A channel: its logo, its name, what is on now, and how far through it is.
 struct KairoChannelCard: View {

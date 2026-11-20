@@ -54,6 +54,13 @@ final class RecentChannels {
         }
     }
 
+    /// Returns the stream URL and headers for a channel without playing it. Nil when the server is gone.
+    func streamOption(for channel: FavoriteChannel) -> (url: URL, headers: [String: String])? {
+        guard let provider = providers()[channel.addonID],
+              let option = provider.liveOption(for: channel.id, title: channel.name) else { return nil }
+        return (option.url, option.headers)
+    }
+
     /// Starts a channel. False when its server isn't available any more.
     @discardableResult
     func play(_ channel: FavoriteChannel, app: AppState) -> Bool {
