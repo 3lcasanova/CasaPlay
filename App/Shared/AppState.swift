@@ -4,7 +4,7 @@ import SwiftUI
 import CasaPlayKit
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case home, movies, series, iptv, extensions, servers, profile
+    case home, movies, series, iptv, news, sports, extensions, servers, profile
 
     var id: String { rawValue }
 
@@ -13,7 +13,9 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .home: return "Home"
         case .movies: return "Movies"
         case .series: return "Series"
-        case .iptv: return "IPTV"
+        case .iptv: return "TV & IPTV"
+        case .news: return "News"
+        case .sports: return "Sports"
         case .extensions: return "Extensions"
         case .servers: return "Servers"
         case .profile: return "Profile"
@@ -26,6 +28,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .movies: return "film"
         case .series: return "tv"
         case .iptv: return "antenna.radiowaves.left.and.right"
+        case .news: return "newspaper"
+        case .sports: return "sportscourt"
         case .extensions: return "puzzlepiece.extension"
         case .servers: return "server.rack"
         case .profile: return "person.crop.circle"

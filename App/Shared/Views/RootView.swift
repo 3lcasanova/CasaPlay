@@ -77,6 +77,8 @@ struct RootView: View {
             tvTab(.movies)
             tvTab(.series)
             tvTab(.iptv)
+            tvTab(.news)
+            tvTab(.sports)
             TabSection("More") {
                 tvTab(.extensions)
                 tvTab(.servers)
@@ -132,6 +134,8 @@ struct RootView: View {
         case .movies: LibraryView(mode: .movies)
         case .series: LibraryView(mode: .series)
         case .iptv: LiveTVView()
+        case .news: NewsView()
+        case .sports: SportsView()
         case .extensions: ExtensionsView()
         case .servers: ServersView()
         case .profile: ProfileView()
@@ -161,6 +165,8 @@ private struct AdaptiveTabs<Content: View>: View {
             tab(.movies)
             tab(.series)
             tab(.iptv)
+            tab(.news)
+            tab(.sports)
             TabSection("More") {
                 tab(.extensions)
                 tab(.servers)
