@@ -166,6 +166,30 @@ final class ExtensionManagerTests: XCTestCase {
         XCTAssertEqual(state.schema, ExtensionState.currentSchema)
     }
 
+    func testTwoLinksToTheSameAddonAreBothKeptWhenAskedTo() async throws {
+        let web = FakeWeb()
+        let a = URL(string: "https://addon.example.com/CONFIG-A/manifest.json")!
+        let b = URL(string: "https://addon.example.com/CONFIG-B/manifest.json")!
+        web.json(a.absoluteString, manifestJSON(resources: #"["stream"]"#))
+        web.json(b.absoluteString, manifestJSON(resources: #"["stream"]"#))
+        let secrets = MemorySecretStore()
+        let m = manager(web, secrets: secrets)
+
+        let first = try await m.install(manifestURL: a, replaceExisting: true, instance: "aaa")
+        let second = try await m.install(manifestURL: b, replaceExisting: true, instance: "bbb")
+        XCTAssertEqual(first.id, "org.example.addon", "the first link keeps the plain id")
+        XCTAssertEqual(second.id, "org.example.addon#bbb")
+        XCTAssertEqual(second.displaySource, "addon.example.com (2)")
+        XCTAssertEqual(secrets.get(first.secretKey), a.absoluteString)
+        XCTAssertEqual(secrets.get(second.secretKey), b.absoluteString)
+
+        // Installing each link again updates its own entry instead of adding more.
+        _ = try await m.install(manifestURL: a, replaceExisting: true, instance: "aaa")
+        _ = try await m.install(manifestURL: b, replaceExisting: true, instance: "bbb")
+        let state = await m.state
+        XCTAssertEqual(state.installed.map(\.id).sorted(), ["org.example.addon", "org.example.addon#bbb"])
+    }
+
     func testReplacingAnInstalledAddonKeepsChoicesAndTakesTheNewLink() async throws {
         let web = FakeWeb()
         let old = URL(string: "https://addon.example.com/OLD-TOKEN/manifest.json")!

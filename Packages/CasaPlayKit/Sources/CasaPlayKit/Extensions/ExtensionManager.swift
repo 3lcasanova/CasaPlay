@@ -117,9 +117,11 @@ public actor ExtensionManager {
     /// Installs a Stremio add-on from its manifest URL after validating the manifest.
     /// With `replaceExisting`, an add-on that is already installed (same id) keeps its role, order and
     /// on/off choice and takes the new link instead, for example after you change its settings.
+    /// With `instance`, a link to an add-on that is already installed from a different link is kept as its own
+    /// entry instead (for example two TorBox MediaFusion setups); the same link again updates its own entry.
     @discardableResult
     public func install(manifestURL: URL, from repository: URL? = nil, role: ProviderRole = .primary,
-                        replaceExisting: Bool = false) async throws -> InstalledExtension {
+                        replaceExisting: Bool = false, instance: String? = nil) async throws -> InstalledExtension {
         let client = try StremioClient(manifestURL: manifestURL, transport: transport)
         let started = Date()
         let manifest = try await client.manifest()
@@ -128,11 +130,19 @@ public actor ExtensionManager {
         var health = ExtensionHealth()
         health.status = .ok(latencyMs: Int(Date().timeIntervalSince(started) * 1000))
         health.checkedAt = Date()
-        if let i = state.installed.firstIndex(where: { $0.manifest.id == manifest.id }) {
+        var identity = manifest.id
+        var displaySource = URLPolicy.redacted(manifestURL)
+        if let instance, let same = state.installed.first(where: { $0.id == manifest.id }),
+           secrets.get(same.secretKey) != manifestURL.absoluteString {
+            identity = manifest.id + "#" + instance
+            let copies = state.installed.filter { $0.manifest.id == manifest.id }.count
+            displaySource += " (\(copies + 1))"
+        }
+        if let i = state.installed.firstIndex(where: { $0.id == identity }) {
             guard replaceExisting else { throw ExtensionError.duplicate }
             try secrets.set(manifestURL.absoluteString, for: state.installed[i].secretKey)
             state.installed[i].manifest = manifest
-            state.installed[i].displaySource = URLPolicy.redacted(manifestURL)
+            if identity == manifest.id { state.installed[i].displaySource = displaySource }
             state.installed[i].compatibility = compatibility
             state.installed[i].updatedAt = Date()
             state.installed[i].health = health
@@ -142,8 +152,8 @@ public actor ExtensionManager {
         let key = "addon." + UUID().uuidString
         try secrets.set(manifestURL.absoluteString, for: key)
         let item = InstalledExtension(
-            id: manifest.id, format: .stremioAddon, manifest: manifest, secretKey: key,
-            displaySource: URLPolicy.redacted(manifestURL), repositoryURL: repository,
+            id: identity, format: .stremioAddon, manifest: manifest, secretKey: key,
+            displaySource: displaySource, repositoryURL: repository,
             isEnabled: compatibility.isUsable, role: role,
             priority: (state.installed.map(\.priority).max() ?? -1) + 1,
             installedAt: Date(), updatedAt: Date(), availableVersion: nil, health: health,
