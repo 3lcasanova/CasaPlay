@@ -44,6 +44,29 @@ packages:
     url: https://github.com/superuser404notfound/AetherEngine
     exactVersion: 7.66.1
 
+# Shared schemes, written into the project so they exist even where Xcode doesn't create them itself.
+schemes:
+  CasaPlay-iOS:
+    build:
+      targets:
+        CasaPlay-iOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+  CasaPlay-tvOS:
+    build:
+      targets:
+        CasaPlay-tvOS: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+
 targets:
   CasaPlay-iOS:
     type: application
