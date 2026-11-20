@@ -21,7 +21,7 @@ enum Theme {
     static let textSecondary = Kairo.secondary
     static let accent = Kairo.accent
     static let onAccent = Color.white
-    static let onLight = Color(red: 0.043, green: 0.047, blue: 0.063)
+    static let onLight = Color(red: 0.04, green: 0.03, blue: 0.02)
 }
 
 enum Metrics {

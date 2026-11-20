@@ -1,44 +1,44 @@
 // CasaPlay · Designed by 𝐂𝓪sΔηⓞשα
 //
-// The Kairo look: a deep indigo ground with a violet glow in the top-left corner, pill-shaped navigation,
-// purple buttons, and white-ringed cards. Colours live here so the whole app changes in one place.
+// The Kairo look: a pure black ground with a warm gold glow in the top-left corner, pill-shaped navigation,
+// gold buttons, and dark warm cards. Colours live here so the whole app changes in one place.
 
 import SwiftUI
 
 enum Kairo {
-    static let ground = Color(red: 0.043, green: 0.035, blue: 0.102)
-    static let glow = Color(red: 0.43, green: 0.13, blue: 0.68)
-    static let accent = Color(red: 0.71, green: 0.30, blue: 1.0)
-    static let accentDeep = Color(red: 0.55, green: 0.17, blue: 0.89)
+    static let ground = Color(red: 0.04, green: 0.03, blue: 0.02)
+    static let glow = Color(red: 0.55, green: 0.35, blue: 0.05)
+    static let accent = Color(red: 0.941, green: 0.627, blue: 0.251)
+    static let accentDeep = Color(red: 0.75, green: 0.47, blue: 0.15)
     /// Unselected pills.
-    static let pill = Color(red: 0.20, green: 0.15, blue: 0.40)
+    static let pill = Color(red: 0.18, green: 0.14, blue: 0.08)
     /// Channel and caption cards.
-    static let card = Color(red: 0.17, green: 0.19, blue: 0.34)
+    static let card = Color(red: 0.14, green: 0.11, blue: 0.07)
     /// The small "ON NOW" label.
-    static let label = Color(red: 0.78, green: 0.49, blue: 1.0)
-    static let secondary = Color(red: 0.74, green: 0.72, blue: 0.84)
+    static let label = Color(red: 0.941, green: 0.627, blue: 0.251)
+    static let secondary = Color(red: 0.70, green: 0.65, blue: 0.55)
     /// Dark text on a white (focused) pill or button.
-    static let onWhite = Color(red: 0.10, green: 0.07, blue: 0.20)
+    static let onWhite = Color(red: 0.06, green: 0.04, blue: 0.02)
 
     static var buttonGradient: LinearGradient {
         LinearGradient(colors: [accent, accentDeep], startPoint: .leading, endPoint: .trailing)
     }
 }
 
-/// Indigo with a violet glow in the top-left corner that fades toward the bottom-right.
+/// Black with a warm gold glow in the top-left corner that fades toward the bottom-right.
 struct KairoBackground: View {
     var body: some View {
         ZStack {
             Kairo.ground
-            RadialGradient(colors: [Kairo.glow.opacity(0.9), Kairo.glow.opacity(0)],
+            RadialGradient(colors: [Kairo.glow.opacity(0.75), Kairo.glow.opacity(0)],
                            center: .topLeading, startRadius: 0, endRadius: 1300)
-            LinearGradient(colors: [Color.clear, Color.black.opacity(0.35)], startPoint: .top, endPoint: .bottom)
+            LinearGradient(colors: [Color.clear, Color.black.opacity(0.45)], startPoint: .top, endPoint: .bottom)
         }
         .ignoresSafeArea()
     }
 }
 
-/// A rounded purple badge such as a rating: "7.9".
+/// A rounded gold badge such as a rating: "7.9".
 struct KairoBadge: View {
     let text: String
 
@@ -70,7 +70,7 @@ struct KairoProgress: View {
 
 // MARK: - Buttons
 
-/// A pill in the top bar: dark when idle, purple when it is the current screen, white when focused.
+/// A pill in the top bar: dark when idle, gold when it is the current screen, white when focused.
 struct KairoPillStyle: ButtonStyle {
     var selected = false
     var circle = false
@@ -100,7 +100,7 @@ struct KairoPillStyle: ButtonStyle {
     }
 }
 
-/// The big buttons under the hero: purple for the main one, translucent for the other, white when focused.
+/// The big buttons under the hero: gold for the main one, translucent for the other, white when focused.
 struct KairoActionStyle: ButtonStyle {
     var primary: Bool
 

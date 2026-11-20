@@ -70,6 +70,7 @@ struct RootView: View {
             KairoTopBar(selection: selection)
             sectionView(app.selectedSection)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .focusSection()
         }
         .background(KairoBackground())
     }

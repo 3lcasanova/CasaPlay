@@ -298,7 +298,7 @@ struct KairoHome: View {
 
 // MARK: - Cards
 
-/// A poster with its rating in a purple badge, and the title underneath.
+/// A poster with its rating in a gold badge, and the title underneath.
 struct KairoPoster: View {
     let title: String
     let url: URL?
