@@ -69,10 +69,15 @@ final class SportsCenter {
         static let spoilerFree = "sports.spoilerFree"
     }
 
+    /// Today's games for Home, kept apart from the day browsed in Sports.
+    private(set) var todayGames: [SportsGame] = []
+
     private let client = SportsClient()
     private var generation = 0
     private var loadedKey: String?
     private var loadedAt: Date?
+    private var todayKey: String?
+    private var todayLoadedAt: Date?
 
     private init() {
         let defaults = UserDefaults.standard
@@ -130,6 +135,34 @@ final class SportsCenter {
         failed = result.isEmpty && !leagues.isEmpty
         loadedKey = key
         loadedAt = Date()
+    }
+
+    func refreshToday() async {
+        let leagues = enabledLeagues
+        let key = leagues.map(\.id).sorted().joined(separator: ",")
+        if key == todayKey, let todayLoadedAt, Date().timeIntervalSince(todayLoadedAt) < 120 { return }
+        guard !leagues.isEmpty else {
+            todayGames = []
+            return
+        }
+        let result = await client.games(in: leagues, day: Date())
+        todayGames = result
+        todayKey = key
+        todayLoadedAt = Date()
+    }
+
+    /// For Home: games on now or still to come today. Followed teams first, then live, then the soonest.
+    var homeGames: [SportsGame] {
+        let ids = followedTeamIDs
+        let now = Date()
+        let candidates = todayGames.filter { $0.state == .live || ($0.state == .upcoming && $0.start > now) }
+        let ranked = candidates.sorted { a, b in
+            let aMine = a.involves(ids), bMine = b.involves(ids)
+            if aMine != bMine { return aMine }
+            if (a.state == .live) != (b.state == .live) { return a.state == .live }
+            return a.start < b.start
+        }
+        return Array(ranked.prefix(10))
     }
 
     // MARK: Groups for the screens

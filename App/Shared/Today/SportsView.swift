@@ -148,7 +148,7 @@ struct GameRow: View {
             }
             Spacer(minLength: Metrics.s(8))
             VStack(alignment: .trailing, spacing: Metrics.s(4)) {
-                status
+                GameStatusLabel(game: game, hideResult: hideResult)
                 if !game.broadcasts.isEmpty {
                     Text("Watch: " + game.broadcasts.prefix(3).joined(separator: ", "))
                         .font(.casa(11))
@@ -192,8 +192,21 @@ struct GameRow: View {
         }
     }
 
-    @ViewBuilder
-    private var status: some View {
+    /// The start in the viewer's own timezone: just the time today, the day and time otherwise.
+    static func startText(_ start: Date) -> String {
+        if Calendar.current.isDateInToday(start) {
+            return start.formatted(date: .omitted, time: .shortened)
+        }
+        return start.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
+/// "LIVE · 3:12 - 2nd", "Final", or the start time in the viewer's timezone.
+struct GameStatusLabel: View {
+    let game: SportsGame
+    let hideResult: Bool
+
+    var body: some View {
         switch game.state {
         case .live:
             HStack(spacing: Metrics.s(5)) {
@@ -212,19 +225,11 @@ struct GameRow: View {
                     .font(.casa(12, weight: .semibold))
                     .foregroundStyle(Color.orange)
             } else {
-                Text(Self.startText(game.start))
+                Text(GameRow.startText(game.start))
                     .font(.casa(12, weight: .semibold))
                     .foregroundStyle(Theme.accent)
             }
         }
-    }
-
-    /// The start in the viewer's own timezone: just the time today, the day and time otherwise.
-    static func startText(_ start: Date) -> String {
-        if Calendar.current.isDateInToday(start) {
-            return start.formatted(date: .omitted, time: .shortened)
-        }
-        return start.formatted(date: .abbreviated, time: .shortened)
     }
 }
 
