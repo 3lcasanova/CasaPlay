@@ -82,6 +82,53 @@ final class TMDBClientTests: XCTestCase {
         XCTAssertEqual(top.first?.name, "Show C")
     }
 
+    // MARK: - Filters
+
+    func testMoodAndLengthFiltersReachTMDB() async throws {
+        let transport = FakeTransport()
+        transport.routes["/3/discover/movie"] = HTTPResponse(status: 200, body: Data(#"{"results": []}"#.utf8))
+        let client = makeClient(transport)
+        _ = try await client.discoverMovies(
+            page: 2, watchRegion: "ca",
+            genreExpression: MovieMood.dateNight.genreExpression,
+            runtimeAtLeast: MovieLength.standard.atLeast, runtimeAtMost: MovieLength.standard.atMost,
+            providers: [8, 119])
+
+        let url = try XCTUnwrap(transport.sent.last?.url)
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        func value(_ name: String) -> String? { items.first { $0.name == name }?.value }
+        XCTAssertEqual(value("with_genres"), "10749,35", "romance AND comedy")
+        XCTAssertEqual(value("with_runtime.gte"), "90")
+        XCTAssertEqual(value("with_runtime.lte"), "120")
+        XCTAssertEqual(value("with_watch_providers"), "8|119", "any of these services")
+        XCTAssertEqual(value("with_watch_monetization_types"), "flatrate")
+        XCTAssertEqual(value("watch_region"), "CA")
+        XCTAssertEqual(value("page"), "2")
+    }
+
+    func testPlainDiscoverStillUsesTheSingleGenreAndProvider() {
+        let params = TMDBClient.discoverParams(genre: 35, language: nil, fromYear: 2000, sort: .popularity,
+                                               page: 1, minVotes: 100, dateKey: "primary_release_date.gte",
+                                               provider: 8, watchRegion: "US")
+        XCTAssertEqual(params["with_genres"], "35")
+        XCTAssertEqual(params["with_watch_providers"], "8")
+        XCTAssertNil(params["with_runtime.gte"])
+        XCTAssertNil(params["with_runtime.lte"])
+    }
+
+    func testEveryMoodAndLengthHasAUsableDefinition() {
+        for mood in MovieMood.allCases {
+            XCTAssertFalse(mood.title.isEmpty)
+            XCTAssertFalse(mood.genreExpression.isEmpty)
+            let ids = mood.genreExpression.split(whereSeparator: { $0 == "|" || $0 == "," })
+            XCTAssertTrue(ids.allSatisfy { Int($0) != nil }, "\(mood) must be genre numbers")
+        }
+        XCTAssertEqual(MovieMood.allCases.count, Set(MovieMood.allCases.map(\.id)).count)
+        XCTAssertNil(MovieLength.long.atMost)
+        XCTAssertEqual(MovieLength.quick.atMost, 89)
+        XCTAssertEqual(MovieLength.standard.atLeast, 90)
+    }
+
     func testSearchMoviesEmptyResults() async throws {
         let transport = FakeTransport()
         transport.routes["/3/search/movie"] = HTTPResponse(status: 200, body: Data("""

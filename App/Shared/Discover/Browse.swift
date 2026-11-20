@@ -62,15 +62,35 @@ struct BrowseCategory: Identifiable, Sendable {
         (386, "Peacock", .amber, "US")
     ]
 
+    /// The services that stream in `region`, so "On My Services" shows only what you can actually watch there.
+    private static var myServices: [Int] {
+        services.filter { $0.region == region }.map(\.id)
+    }
+
     static let movies: [BrowseCategory] = {
         let from = discoverFromYear
+        let mine = myServices
         var list: [BrowseCategory] = [
             movie("popular", "Popular", "flame.fill", .ruby) { try await $0.discoverMovies(fromYear: from, page: $1) },
             movie("nowPlaying", "Now Playing", "ticket.fill", .amber) { try await $0.nowPlayingMovies(region: region, page: $1) },
             movie("upcoming", "Coming Soon", "calendar", .violet) { try await $0.upcomingMovies(region: region, page: $1) },
             movie("topRated", "Top Rated", "rosette", .emerald) { try await $0.discoverMovies(fromYear: from, sort: .rating, page: $1) },
-            movie("trending", "Trending This Week", "chart.line.uptrend.xyaxis", .rose) { try await $0.trendingMovies(page: $1) }
+            movie("trending", "Trending This Week", "chart.line.uptrend.xyaxis", .rose) { try await $0.trendingMovies(page: $1) },
+            movie("mine", "On My Services", "play.tv.fill", .teal) {
+                try await $0.discoverMovies(fromYear: from, page: $1, watchRegion: region, providers: mine)
+            }
         ]
+        for mood in MovieMood.allCases {
+            list.append(movie("mood-\(mood.rawValue)", mood.title, mood.symbol, mood.palette) {
+                try await $0.discoverMovies(fromYear: from, page: $1, genreExpression: mood.genreExpression)
+            })
+        }
+        for length in MovieLength.allCases {
+            list.append(movie("time-\(length.rawValue)", length.title, "clock.fill", .sky) {
+                try await $0.discoverMovies(fromYear: from, page: $1,
+                                            runtimeAtLeast: length.atLeast, runtimeAtMost: length.atMost)
+            })
+        }
         for service in services {
             let provider = service.id
             let country = service.region
@@ -97,12 +117,16 @@ struct BrowseCategory: Identifiable, Sendable {
 
     static let series: [BrowseCategory] = {
         let from = discoverFromYear
+        let mine = myServices
         var list: [BrowseCategory] = [
             show("airingToday", "New TV Tonight", "dot.radiowaves.left.and.right", .ruby) { try await $0.airingTodayTV(page: $1) },
             show("onTheAir", "On The Air This Week", "calendar.badge.clock", .amber) { try await $0.onTheAirTV(page: $1) },
             show("popular", "Popular", "flame.fill", .sunset) { try await $0.discoverTV(fromYear: from, page: $1) },
             show("topRated", "Top Rated", "rosette", .emerald) { try await $0.discoverTV(fromYear: from, sort: .rating, page: $1) },
-            show("trending", "Trending This Week", "chart.line.uptrend.xyaxis", .rose) { try await $0.trendingTV(page: $1) }
+            show("trending", "Trending This Week", "chart.line.uptrend.xyaxis", .rose) { try await $0.trendingTV(page: $1) },
+            show("mine", "On My Services", "play.tv.fill", .teal) {
+                try await $0.discoverTV(fromYear: from, page: $1, watchRegion: region, providers: mine)
+            }
         ]
         for service in services {
             let provider = service.id
@@ -234,6 +258,34 @@ final class AirInfoCache {
         } catch {
             // Try again the next time the card appears.
             requested.remove(tmdbID)
+        }
+    }
+}
+
+extension MovieMood {
+    var symbol: String {
+        switch self {
+        case .feelGood: return "face.smiling.fill"
+        case .edgeOfSeat: return "eye.fill"
+        case .mindBending: return "sparkles"
+        case .epic: return "flag.fill"
+        case .dateNight: return "heart.fill"
+        case .darkGritty: return "moon.stars.fill"
+        case .cozyFamily: return "teddybear.fill"
+        case .trueStories: return "book.fill"
+        }
+    }
+
+    var palette: TilePalette {
+        switch self {
+        case .feelGood: return .amber
+        case .edgeOfSeat: return .ruby
+        case .mindBending: return .indigo
+        case .epic: return .sunset
+        case .dateNight: return .rose
+        case .darkGritty: return .graphite
+        case .cozyFamily: return .emerald
+        case .trueStories: return .ocean
         }
     }
 }

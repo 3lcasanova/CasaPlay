@@ -139,6 +139,8 @@ extension HomeView {
 
                         TodayShelves()
 
+                        DiscoverShelf(title: "On TV Tonight", titles: feed.titles("tv-airingToday"), destination: .series) { opener.open($0) }
+
                         DiscoverShelf(title: "Top 10 Movies This Week",
                                       titles: Array(feed.trendingMovies.prefix(10)),
                                       ranked: true, destination: .movies) { opener.open($0) }

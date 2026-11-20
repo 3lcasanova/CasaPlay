@@ -116,13 +116,18 @@ public struct TMDBClient {
     public func discoverMovies(
         genre: Int? = nil, language: String? = nil, fromYear: Int? = nil,
         sort: TMDBDiscoverSort = .popularity, page: Int = 1,
-        provider: Int? = nil, watchRegion: String? = nil
+        provider: Int? = nil, watchRegion: String? = nil,
+        genreExpression: String? = nil, runtimeAtLeast: Int? = nil, runtimeAtMost: Int? = nil,
+        providers: [Int] = []
     ) async throws -> [TMDBMovie] {
         try await get(path: "/discover/movie",
                       params: Self.discoverParams(genre: genre, language: language, fromYear: fromYear,
                                                   sort: sort, page: page, minVotes: 100,
                                                   dateKey: "primary_release_date.gte",
-                                                  provider: provider, watchRegion: watchRegion),
+                                                  provider: provider, watchRegion: watchRegion,
+                                                  genreExpression: genreExpression,
+                                                  runtimeAtLeast: runtimeAtLeast, runtimeAtMost: runtimeAtMost,
+                                                  providers: providers),
                       as: TMDBMoviePage.self).results
     }
 
@@ -131,13 +136,15 @@ public struct TMDBClient {
     public func discoverTV(
         genre: Int? = nil, language: String? = nil, fromYear: Int? = nil,
         sort: TMDBDiscoverSort = .popularity, page: Int = 1,
-        provider: Int? = nil, watchRegion: String? = nil
+        provider: Int? = nil, watchRegion: String? = nil,
+        providers: [Int] = []
     ) async throws -> [TMDBShow] {
         try await get(path: "/discover/tv",
                       params: Self.discoverParams(genre: genre, language: language, fromYear: fromYear,
                                                   sort: sort, page: page, minVotes: 50,
                                                   dateKey: "first_air_date.gte",
-                                                  provider: provider, watchRegion: watchRegion),
+                                                  provider: provider, watchRegion: watchRegion,
+                                                  providers: providers),
                       as: TMDBShowPage.self).results
     }
 
@@ -197,7 +204,9 @@ public struct TMDBClient {
     static func discoverParams(
         genre: Int?, language: String?, fromYear: Int?, sort: TMDBDiscoverSort,
         page: Int, minVotes: Int, dateKey: String,
-        provider: Int? = nil, watchRegion: String? = nil
+        provider: Int? = nil, watchRegion: String? = nil,
+        genreExpression: String? = nil, runtimeAtLeast: Int? = nil, runtimeAtMost: Int? = nil,
+        providers: [Int] = []
     ) -> [String: String] {
         var params: [String: String] = [
             "sort_by": sort.queryValue,
@@ -206,11 +215,20 @@ public struct TMDBClient {
             "vote_count.gte": "\(sort == .rating ? minVotes * 5 : minVotes)",
             "page": "\(max(page, 1))"
         ]
-        if let genre { params["with_genres"] = "\(genre)" }
+        if let genreExpression, !genreExpression.isEmpty {
+            // "35|10751" is any of these genres; "10749,35" is all of them.
+            params["with_genres"] = genreExpression
+        } else if let genre {
+            params["with_genres"] = "\(genre)"
+        }
+        if let runtimeAtLeast { params["with_runtime.gte"] = "\(runtimeAtLeast)" }
+        if let runtimeAtMost { params["with_runtime.lte"] = "\(runtimeAtMost)" }
         if let language, !language.isEmpty { params["with_original_language"] = language }
         if let fromYear { params[dateKey] = "\(fromYear)-01-01" }
-        if let provider {
-            params["with_watch_providers"] = "\(provider)"
+        let providerIDs = providers.isEmpty ? (provider.map { [$0] } ?? []) : providers
+        if !providerIDs.isEmpty {
+            // Several services are "any of these", joined with |.
+            params["with_watch_providers"] = providerIDs.map(String.init).joined(separator: "|")
             // Subscription catalogue only, so "Trending on Netflix" doesn't list titles that are merely for rent.
             params["with_watch_monetization_types"] = "flatrate"
             let region = watchRegion?.trimmingCharacters(in: .whitespaces) ?? ""

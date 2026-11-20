@@ -18,6 +18,7 @@ struct CasaPlayApp: App {
                 .environment(ServerCenter.shared)
                 .environment(NewsCenter.shared)
                 .environment(SportsCenter.shared)
+                .environment(SeriesTracker.shared)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
                 .task { await ServerCenter.shared.installPersonalServers() }

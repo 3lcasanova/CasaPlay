@@ -243,3 +243,59 @@ final class SportsTests: XCTestCase {
         XCTAssertEqual(teams[1].logoURL?.absoluteString, "https://a.example/bos.png")
     }
 }
+
+// MARK: - Followed shows
+
+final class ShowTrackingTests: XCTestCase {
+    private var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+    private let now = utc("2026-11-20T12:00:00Z")
+
+    private func tracking(last: String?, next: String?, status: String? = "Returning Series") -> ShowTracking {
+        TMDBShowAirInfo(
+            id: 1, status: status,
+            last_episode_to_air: last.map { TMDBEpisodeStub(season_number: 2, episode_number: 5, air_date: $0) },
+            next_episode_to_air: next.map { TMDBEpisodeStub(season_number: 2, episode_number: 6, air_date: $0) }
+        ).tracking(now: now, calendar: calendar)
+    }
+
+    func testNewEpisodeAndTheNextOne() {
+        let t = tracking(last: "2026-11-18", next: "2026-11-27")
+        XCTAssertTrue(t.hasNewEpisode)
+        XCTAssertEqual(t.latestText, "S02 E05 · 2 days ago")
+        XCTAssertEqual(t.nextDays, 7)
+        XCTAssertTrue(t.nextText?.hasPrefix("S02 E06 · ") == true)
+        XCTAssertNotNil(t.nextDate)
+    }
+
+    func testNextEpisodeWording() {
+        XCTAssertEqual(tracking(last: nil, next: "2026-11-20").nextText, "S02 E06 · today")
+        XCTAssertEqual(tracking(last: nil, next: "2026-11-21").nextText, "S02 E06 · tomorrow")
+        XCTAssertEqual(tracking(last: nil, next: "2026-11-23").nextText, "S02 E06 · in 3 days")
+    }
+
+    func testLatestEpisodeWording() {
+        XCTAssertEqual(tracking(last: "2026-11-20", next: nil).latestText, "S02 E05 · today")
+        XCTAssertEqual(tracking(last: "2026-11-19", next: nil).latestText, "S02 E05 · yesterday")
+    }
+
+    func testOldOrMissingEpisodesSayNothing() {
+        let finished = tracking(last: "2026-03-01", next: nil, status: "Ended")
+        XCTAssertFalse(finished.hasNewEpisode)
+        XCTAssertNil(finished.latestText)
+        XCTAssertNil(finished.nextText)
+        XCTAssertNil(tracking(last: nil, next: nil).nextText)
+    }
+
+    func testFollowListOrdersNewEpisodesThenSoonest() {
+        let fresh = tracking(last: "2026-11-19", next: "2026-11-26")
+        let soon = tracking(last: "2026-10-01", next: "2026-11-22")
+        let later = tracking(last: "2026-10-01", next: "2026-12-10")
+        let none = tracking(last: nil, next: nil)
+        let ordered = [none, later, soon, fresh].sorted { $0.sortKey < $1.sortKey }
+        XCTAssertEqual(ordered, [fresh, soon, later, none])
+    }
+}

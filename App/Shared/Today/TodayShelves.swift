@@ -16,6 +16,7 @@ struct TodayShelves: View {
         let stories = news.briefing
 
         VStack(alignment: .leading, spacing: 0) {
+            YourShowsShelf()
             if !games.isEmpty {
                 shelf(title: "Live & tonight", destination: .sports) {
                     ForEach(games) { game in

@@ -37,6 +37,15 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
 }
 
+/// The last episode of a show you watched.
+struct LeftOff: Equatable {
+    let season: Int
+    let episode: Int
+    let isWatched: Bool
+
+    var label: String { String(format: "S%02d E%02d", season, episode) }
+}
+
 /// A TMDB film or show that a link asked the app to open.
 struct PendingTitle: Equatable {
     let tmdbID: Int
@@ -443,6 +452,31 @@ final class AppState {
 
     func watchRecord(forKey key: String) -> WatchRecord? {
         watchMap[key]
+    }
+
+    /// The episode of a show watched most recently, read from saved watch history.
+    /// Episode history keys look like "show name s02e05|2024".
+    func leftOff(in show: MediaItem) -> LeftOff? {
+        let prefix = show.title.lowercased() + " s"
+        let suffix = "|\(show.year ?? 0)"
+        var best: (record: WatchRecord, season: Int, episode: Int)?
+        for (key, record) in watchMap where key.hasPrefix(prefix) && key.hasSuffix(suffix) {
+            guard record.isWatched || record.progressSeconds > 0,
+                  let (season, episode) = Self.seasonAndEpisode(in: key) else { continue }
+            if let current = best,
+               (current.record.lastPlayedAt ?? .distantPast) >= (record.lastPlayedAt ?? .distantPast) { continue }
+            best = (record, season, episode)
+        }
+        guard let best else { return nil }
+        return LeftOff(season: best.season, episode: best.episode, isWatched: best.record.isWatched)
+    }
+
+    static func seasonAndEpisode(in key: String) -> (Int, Int)? {
+        let base = key.split(separator: "|", maxSplits: 1).first.map(String.init) ?? key
+        guard let range = base.range(of: #"s\d+e\d+$"#, options: .regularExpression) else { return nil }
+        let numbers = base[range].dropFirst().split(separator: "e")
+        guard numbers.count == 2, let season = Int(numbers[0]), let episode = Int(numbers[1]) else { return nil }
+        return (season, episode)
     }
 
     func play(_ item: MediaItem) {
