@@ -159,7 +159,9 @@ final class AppState {
     var activeProfileID: UUID {
         didSet { ProfileStore.saveActiveID(activeProfileID) }
     }
-    var subtitleStyle = SubtitleStyle.default
+    var subtitleStyle = SubtitleStyle.load() {
+        didSet { subtitleStyle.save() }
+    }
     /// Goes up when a profile photo is added, changed or removed, so every avatar redraws.
     var photoRevision = 0
     var selectedSection: AppSection = .home

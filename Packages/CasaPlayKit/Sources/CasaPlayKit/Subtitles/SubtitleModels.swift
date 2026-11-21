@@ -136,6 +136,22 @@ public struct SubtitleStyle: Codable, Hashable, Sendable {
     }
 
     public static let `default` = SubtitleStyle()
+
+    private static let userDefaultsKey = "casaplay.subtitleStyle"
+
+    public static func load() -> SubtitleStyle {
+        guard let data = UserDefaults.standard.data(forKey: userDefaultsKey),
+              let style = try? JSONDecoder().decode(SubtitleStyle.self, from: data) else {
+            return .default
+        }
+        return style
+    }
+
+    public func save() {
+        if let data = try? JSONEncoder().encode(self) {
+            UserDefaults.standard.set(data, forKey: SubtitleStyle.userDefaultsKey)
+        }
+    }
 }
 
 /// Finds which cues are on screen at a given playback time.
